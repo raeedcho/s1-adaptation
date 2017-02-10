@@ -32,7 +32,8 @@ ex.binConfig.include(1).which={};
 ex.binConfig.include(2).field='analog';
 ex.binConfig.include(2).which={'Sync'};
 ex.firingRateConfig.cropType='tightCrop';
-ex.firingRateConfig.offset=-0.015;
+% ex.firingRateConfig.offset=-0.015;
+ex.firingRateConfig.kw = 0.01; % 10 ms binning
 
 ex.binData()
 

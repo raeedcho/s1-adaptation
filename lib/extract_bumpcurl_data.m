@@ -44,7 +44,8 @@ ex.binConfig.include(5).field='analog';
 ex.binConfig.include(5).which={'KinectSyncPulse'};
 % base_ex.binConfig.include(3).which=base_ex.analog(2).data.Properties.VariableNames(2:end);%kinect data
 ex.firingRateConfig.cropType='tightCrop';
-ex.firingRateConfig.offset=-0.015;
+% ex.firingRateConfig.offset=-0.015;
+ex.firingRateConfig.kw = 0.01; %10 ms binning
 
 ex.binData()
 
