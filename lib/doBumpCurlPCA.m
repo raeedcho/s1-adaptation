@@ -1,0 +1,1 @@
+function [base_scores,adapt_scores,wash_scores] = doBumpCurlPCA(base_data,adapt_data,wash_data)
