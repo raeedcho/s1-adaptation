@@ -15,80 +15,25 @@ clear homeFolder
 
 
 %% Load CDS files
-% set up input structs
-root_folder = 'C:\Users\rhc307\Projects\limblab\data-raeed\BumpCurl\Han\20170206\';
-fname_prefix = ['Han_' datecode '_CObumpcurl'];
 
-% input_struct.lab=6;
-% input_struct.ranBy='ranByRaeed';
-% input_struct.monkey='monkeyHan';
-% input_struct.task='taskCObump';
-% input_struct.array='arrayLeftS1Area2';
-% input_struct.folder=[root_folder 'preCDS'];
-% input_struct.mapfile='mapFileC:\Users\rhc307\Projects\limblab\data-raeed\ForceKin\OutOutReach\Han\mapfile\left_S1\SN 6251-001459.cmp';
-% 
-% base_input = input_struct;
-% adapt_input = input_struct;
-% wash_input = input_struct;
-% extra_base_input = input_struct;
-% extra_adapt_input = input_struct;
-% extra_wash_input = input_struct;
-% 
-% base_input.fname= [fname_prefix '_baseline_area2EMG_001'];
-% adapt_input.fname=[fname_prefix '_adaptation_area2EMG_003'];
-% wash_input.fname= [fname_prefix '_washout_area2EMG_004'];
-% 
-% extra_base_input.fname= [fname_prefix '_baseline_EMGextra_001'];
-% extra_adapt_input.fname=[fname_prefix '_adaptation_EMGextra_003'];
-% extra_wash_input.fname= [fname_prefix '_washout_EMGextra_004'];
-% 
-% base_input.save_folder =  [root_folder 'CDS\' fname_prefix '_baseline_001_area2EMG_CDS.mat'];
-% adapt_input.save_folder = [root_folder 'CDS\' fname_prefix '_adaptation_area2EMG_CDS.mat'];
-% wash_input.save_folder =  [root_folder 'CDS\' fname_prefix '_washout_area2EMG_CDS.mat'];
-% 
-% extra_base_input.save_folder =  [root_folder 'CDS\' fname_prefix '_baseline_001_EMGextra_CDS.mat'];
-% extra_adapt_input.save_folder = [root_folder 'CDS\' fname_prefix '_adaptation_EMGextra_CDS.mat'];
-% extra_wash_input.save_folder =  [root_folder 'CDS\' fname_prefix '_washout_EMGextra_CDS.mat'];
-% 
-% base_cds = loadsave_cds(base_input);
-% adapt_cds = loadsave_cds(adapt_input);
-% wash_cds = loadsave_cds(wash_input);
-% 
-% extra_base_cds = loadsave_cds(extra_base_input);
-% extra_adapt_cds = loadsave_cds(extra_adapt_input);
-% extra_wash_cds = loadsave_cds(extra_wash_input);
-
-base_cds = load(['CDS\' fname_prefix '_baseline_area2EMG_CDS.mat'],'cds');
-adapt_cds = load(['CDS\' fname_prefix '_adaptation_area2EMG_CDS.mat'],'cds');
-wash_cds = load(['CDS\' fname_prefix '_washout_area2EMG_CDS.mat'],'cds');
-
-extra_base_cds = load(['CDS\' fname_prefix '_baseline_EMGextra_CDS.mat'],'cds');
-extra_adapt_cds = load(['CDS\' fname_prefix '_adaptation_EMGextra_CDS.mat'],'cds');
-extra_wash_cds = load(['CDS\' fname_prefix '_washout_EMGextra_CDS.mat'],'cds');
-
-base_cds = base_cds.cds;
-adapt_cds = adapt_cds.cds;
-wash_cds = wash_cds.cds;
-
-extra_base_cds = extra_base_cds.cds;
-extra_adapt_cds = extra_adapt_cds.cds;
-extra_wash_cds = extra_wash_cds.cds;
-
-
+% [base_cds,adapt_cds,wash_cds] = loadsave_bumpcurl_cds(datecode);
 
 %% Extract data from cds files
-[base_data,base_emg,base_table] = extract_bumpcurl_data(base_cds);
-[adapt_data,adapt_emg,adapt_table] = extract_bumpcurl_data(adapt_cds);
-[wash_data,wash_emg,wash_table] = extract_bumpcurl_data(wash_cds);
+clear params;
+params.array_alias = {'LeftS1Area2','S1'};
+params.exclude_units = 255;
+params.event_list = {'bumpTime';'bumpDir'};
+meta = struct('force_direction',1.48,'block','BL');
+params.meta = meta;
+trial_data_base = parseFileByTrial(base_cds,params);
 
-[extra_base_data,extra_base_emg] = extract_extra_bumpcurl_data(extra_base_cds);
-[extra_adapt_data,extra_adapt_emg] = extract_extra_bumpcurl_data(extra_adapt_cds);
-[extra_wash_data,extra_wash_emg] = extract_extra_bumpcurl_data(extra_wash_cds);
+params.meta.block = 'AD';
+trial_data_adapt = parseFileByTrial(adapt_cds,params);
 
-clear *_input;
-clear root_folder;
-clear fname_prefix;
+params.meta.block = 'WO';
+trial_data_wash = parseFileByTrial(wash_cds,params);
 
+trial_data = cat(2,trial_data_base,trial_data_adapt,trial_data_wash);
 
 %% Check trial tables
 % check reward tables
