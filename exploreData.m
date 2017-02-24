@@ -14,14 +14,14 @@ epoch_colors = colors(1:length(epoch_names),:);
 bump_colors = colors(length(epoch_names)+1:end,:);
 
 %% Trial average by block and bump direction (100 ms before bump and 300 ms after bump)
-% truncate and average
-td = truncateAndBin(trial_data_R,{'idx_bumpTime',-10},{'idx_bumpTime',30});
-td = trialAverage(td,{'bumpDir','epoch'});
-timevec = (-0.1:0.01:0.29)';
-
-% set up bump direction subplot numbers
-subplot_nums = [6 2 4 8];
-
+% % truncate and average
+% td = truncateAndBin(trial_data_R,{'idx_bumpTime',-10},{'idx_bumpTime',30});
+% td = trialAverage(td,{'bumpDir','epoch'});
+% timevec = (-0.1:0.01:0.29)';
+% 
+% % set up bump direction subplot numbers
+% subplot_nums = [6 2 4 8];
+% 
 % for emgCtr = 1:length(trial_data(1).emg_names)
 %     figure('Name',trial_data(1).emg_names{emgCtr}); % meta data seems to be missing from the trial averaged data
 %     min_act = inf;
@@ -60,67 +60,87 @@ td = trialAverage(td,{'bumpDir','epoch'});
 
 % set up plot
 epoch_names = {'BL','AD','WO'};
-figure;
+figure('Name','Average EMG')
 
 for epochCtr = 1:length(epoch_names)
     subplot(1,3,epochCtr)
     hold all;
     for i = getTDidx(td,'epoch',epoch_names(epochCtr))
         bumpDir_idx = td(i).bumpDir/90+1; % only works for 4 bump files
-%         plot3(td(i).emg_pca(:,1),td(i).emg_pca(:,2),td(i).emg_pca(:,3),'k-','linewidth',2,'Color',bump_colors(bumpDir_idx,:))
-        plot(td(i).emg_pca(:,1),td(i).emg_pca(:,2),'k-','linewidth',2,'Color',bump_colors(bumpDir_idx,:))
+        plot3(td(i).emg_pca(:,1),td(i).emg_pca(:,2),td(i).emg_pca(:,3),'k-','linewidth',2,'Color',bump_colors(bumpDir_idx,:))
+%         plot(td(i).emg_pca(:,1),td(i).emg_pca(:,2),'k-','linewidth',2,'Color',bump_colors(bumpDir_idx,:))
     end
     axis equal
 end
 
 %% Take a look at kinematics
 
-td = truncateAndBin(trial_data_R,{'idx_bumpTime',-10},{'idx_bumpTime',50});
-% td = trialAverage(td,{'bumpDir','epoch'});
-
-% animateBumpcurlTrials(td,'pos',bump_colors,0.01,5);
-
-
-% set up plot
-% epoch_names = {'BL','AD','WO'};
-% figure;
-% 
-% for epochCtr = 1:length(epoch_names)
-%     subplot(1,3,epochCtr)
-%     hold all;
-%     for i = getTDidx(td,'epoch',epoch_names(epochCtr))
-%         bumpDir_idx = td(i).bumpDir/90+1; % only works for 4 bump files
-% %         plot3(td(i).emg_pca(:,1),td(i).emg_pca(:,2),td(i).emg_pca(:,3),'k-','linewidth',2,'Color',bump_colors(bumpDir_idx,:))
-%         plot(td(i).pos(:,1),td(i).pos(:,2),'k-','linewidth',2,'Color',bump_colors(bumpDir_idx,:))
-%     end
-%     axis equal
-% end
-
-%% S1 pca
-td = truncateAndBin(trial_data_R,{'idx_bumpTime',-10},{'idx_bumpTime',50});
-% td = trialAverage(td,{'bumpDir','epoch'});
-
-[td,pca_info] = getPCA(td,struct('signals','S1_spikes','sqrt_transform',true,'do_smoothing',true));
-
-% trial average
+td = truncateAndBin(trial_data_R,{'idx_bumpTime',-10},{'idx_bumpTime',30});
 td = trialAverage(td,{'bumpDir','epoch'});
+
+% animateBumpcurlTrials(td,'pos',bump_colors,0.1,5);
+
 
 % set up plot
 epoch_names = {'BL','AD','WO'};
-figure;
+figure('Name','Average Velocity')
 
 for epochCtr = 1:length(epoch_names)
     subplot(1,3,epochCtr)
     hold all;
     for i = getTDidx(td,'epoch',epoch_names(epochCtr))
         bumpDir_idx = td(i).bumpDir/90+1; % only works for 4 bump files
-        plot3(td(i).S1_spikes_pca(:,1),td(i).S1_spikes_pca(:,2),td(i).S1_spikes_pca(:,3),'k-','linewidth',2,'Color',bump_colors(bumpDir_idx,:))
-%         plot(td(i).S1_spikes_pca(:,1),td(i).S1_spikes_pca(:,2),'k-','linewidth',2,'Color',bump_colors(bumpDir_idx,:))
+        plot(td(i).vel(:,1),td(i).vel(:,2),'k-','linewidth',2,'Color',bump_colors(bumpDir_idx,:))
     end
     axis equal
 end
 
-animateBumpcurlTrials(td,'S1_spikes_pca',bump_colors,0.1,60);
+%% S1 pca
+td = truncateAndBin(trial_data_R,{'idx_bumpTime',-10},{'idx_bumpTime',30});
+% td = trialAverage(td,{'bumpDir','epoch'});
+
+[td,pca_info] = getPCA(td,struct('signals','S1_spikes'));
+
+% trial average
+td = trialAverage(td,{'bumpDir','epoch'});
+
+% set up plot
+epoch_names = {'BL','AD','WO'};
+figure('Name','Average S1 PC')
+
+for epochCtr = 1:length(epoch_names)
+    subplot(1,3,epochCtr)
+    hold all;
+    for i = getTDidx(td,'epoch',epoch_names(epochCtr))
+        bumpDir_idx = td(i).bumpDir/90+1; % only works for 4 bump files
+        plot3(td(i).S1_pca(:,1),td(i).S1_pca(:,2),td(i).S1_pca(:,3),'k-','linewidth',2,'Color',bump_colors(bumpDir_idx,:))
+%         plot(td(i).S1_pca(:,1),td(i).S1_pca(:,2),'k-','linewidth',2,'Color',bump_colors(bumpDir_idx,:))
+    end
+    axis equal
+end
+
+% animateBumpcurlTrials(td,'S1_pca',bump_colors,0.1,60);
+
+%% Try dPCA on S1 spikes with conditions of targets and learning block
+% get truncated and smoothed signals around bump time (100 ms before bump to 300 ms after)
+td = smoothSignals(trial_data_R,struct('signals',{'S1_spikes'},'sqrt_transform',true,'do_smoothing',true,'kernel_SD',0.1));
+td = truncateAndBin(td,{'idx_bumpTime',-10},{'idx_bumpTime',30});
+
+% get dPCA conditions
+blocks{1} = getTDidx(td,'epoch','BL');
+blocks{2} = getTDidx(td,'epoch','AD','range',[0 0.25]);
+blocks{3} = getTDidx(td,'epoch','AD','range',[0.25 0.5]);
+blocks{4} = getTDidx(td,'epoch','AD','range',[0.5 0.75]);
+blocks{5} = getTDidx(td,'epoch','AD','range',[0.75 1]);
+blocks{6} = getTDidx(td,'epoch','WO','range',[0 0.33]);
+blocks{7} = getTDidx(td,'epoch','WO','range',[0.33 0.67]);
+blocks{8} = getTDidx(td,'epoch','WO','range',[0.67 1]);
+
+% get actual dPCA
+td = getDPCA(td,blocks,'bumpDir',struct('signals',{'S1_spikes'},'do_plot',true,'num_dims',10));
+
+td
+
 
 %% Try mahalanobis distance on time-spread PCA
 % base_clusters = cell(8,1);
@@ -213,4 +233,3 @@ animateBumpcurlTrials(td,'S1_spikes_pca',bump_colors,0.1,60);
 % 
 % figure
 % plot(adapt_base_angles*180/pi)
-
