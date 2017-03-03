@@ -63,7 +63,7 @@ if(do_save)
         mkdir(save_folder);
     end
 
-    save([save_folder '_CDS.mat'],'base_cds','adapt_cds','wash_cds','-v7.3');
+    save([save_folder fname_prefix '_CDS.mat'],'base_cds','adapt_cds','wash_cds','-v7.3');
 
     save_folder = [root_folder 'TD\'];
 
@@ -71,6 +71,6 @@ if(do_save)
         mkdir(save_folder);
     end
 
-    save([save_folder '_TD.mat'],'base_cds','adapt_cds','wash_cds','-v7.3');
+    save([save_folder fname_prefix '_TD.mat'],'trial_data','-v7.3');
 end
 
