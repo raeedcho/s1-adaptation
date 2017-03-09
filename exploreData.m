@@ -47,7 +47,7 @@ bump_colors = colors(length(epoch_names)+1:end,:);
 %     legend(epoch_names)
 % end
 %% Try PCA on EMGs
-
+[~,td] = getTDidx(trial_data,'result','R');
 td = truncateAndBin(td,{'idx_bumpTime',-10},{'idx_bumpTime',30});
 % td = trialAverage(td,'bumpDir');
 
@@ -74,7 +74,7 @@ for epochCtr = 1:length(epoch_names)
 end
 
 %% Take a look at kinematics
-
+[~,td] = getTDidx(trial_data,'result','R');
 td = truncateAndBin(td,{'idx_bumpTime',-10},{'idx_bumpTime',30});
 td = trialAverage(td,{'bumpDir','epoch'});
 
@@ -96,24 +96,45 @@ for epochCtr = 1:length(epoch_names)
 end
 
 %% S1 pca
-td = truncateAndBin(td,{'idx_bumpTime',-10},{'idx_bumpTime',30});
+[~,td] = getTDidx(trial_data,'result','R');
+td = smoothSignals(td,struct('signals','S1_spikes','sqrt_transform',true));
+td = truncateAndBin(td,{'idx_bumpTime',-10},{'idx_bumpTime',15});
 % td = trialAverage(td,{'bumpDir','epoch'});
 
-[td,pca_info] = getPCA(td,struct('signals','S1_spikes'));
+% rename epochs
+epoch_list = {'BL','AD1','AD2','AD3','AD4','WO1','WO2','WO3'};
+num_epochs = length(epoch_list);
+
+% split up into finer epochs
+blocks{2} = getTDidx(td,'epoch','AD','range',[0 0.25]);
+blocks{3} = getTDidx(td,'epoch','AD','range',[0.25 0.5]);
+blocks{4} = getTDidx(td,'epoch','AD','range',[0.5 0.75]);
+blocks{5} = getTDidx(td,'epoch','AD','range',[0.75 1]);
+blocks{6} = getTDidx(td,'epoch','WO','range',[0 0.33]);
+blocks{7} = getTDidx(td,'epoch','WO','range',[0.33 0.67]);
+blocks{8} = getTDidx(td,'epoch','WO','range',[0.67 1]);
+
+for i = 2:8
+    [td(blocks{i}).epoch] = deal(epoch_list{i});
+end
+
+% find idx of sorted units
+sort_idx = find(td(1).S1_unit_guide(:,2));
+[td,pca_info] = getPCA(td,struct('signals',{{'S1_spikes',sort_idx}}));
 
 % trial average
 td = trialAverage(td,{'bumpDir','epoch'});
 
 % set up plot
-epoch_names = {'BL','AD','WO'};
 figure('Name','Average S1 PC')
 
-for epochCtr = 1:length(epoch_names)
-    subplot(1,3,epochCtr)
+for epochCtr = 1:length(epoch_list)
+    subplot(1,length(epoch_list),epochCtr)
     hold all;
-    for i = getTDidx(td,'epoch',epoch_names(epochCtr))
+    for i = getTDidx(td,'epoch',epoch_list(epochCtr))
         bumpDir_idx = td(i).bumpDir/90+1; % only works for 4 bump files
-        plot3(td(i).S1_pca(:,1),td(i).S1_pca(:,2),td(i).S1_pca(:,3),'k-','linewidth',2,'Color',bump_colors(bumpDir_idx,:))
+        %plot3(td(i).S1_pca(20,1),td(i).S1_pca(20,2),td(i).S1_pca(20,3),'o-','linewidth',2,'Color',bump_colors(bumpDir_idx,:))
+        plot3(td(i).S1_pca(:,1),td(i).S1_pca(:,2),td(i).S1_pca(:,3),'-','linewidth',2,'Color',bump_colors(bumpDir_idx,:))
 %         plot(td(i).S1_pca(:,1),td(i).S1_pca(:,2),'k-','linewidth',2,'Color',bump_colors(bumpDir_idx,:))
     end
     axis equal
@@ -140,27 +161,28 @@ blocks{6} = getTDidx(td,'epoch','AD','range',[0.5 0.75]);
 % blocks{7} = getTDidx(td,'epoch','WO','range',[0.67 1]);
 
 % get actual dPCA
-td = getDPCA(td,'bumpDir',blocks,struct('signals',{'S1_spikes'},'do_plot',true,'num_dims',10));
-
-%% check out behavior
-[~,td] = getTDidx(trial_data,'result','R');
-
-td = getMoveOnsetAndPeak(td,struct('start_idx','idx_goCueTime','end_idx','idx_endTime','s_thresh',20));
-
-td = removeBadTrials(td);
-
-metric = getLearningMetrics(td,struct('which_metric','curvature','time_window',{{'idx_movement_on',0;'idx_movement_on',20}}));
-
-bl_idx = getTDidx(td,'epoch','BL');
-ad_idx = getTDidx(td,'epoch','AD');
-wo_idx = getTDidx(td,'epoch','WO');
-
-figure
-% plot([metric(bl_idx);metric(wo_idx)])
-plot(metric)
-hold on
-plot(repmat(ad_idx(1),2,1),[-1 1],'k--','linewidth',3)
-plot(repmat(wo_idx(1),2,1),[-1 1],'k--','linewidth',3) 
+sort_idx = find(td(1).S1_unit_guide(:,2));
+td = getDPCA(td,blocks,'bumpDir',struct('signals',{{'S1_spikes',sort_idx}},'do_plot',true,'num_dims',10));
+% 
+% %% check out behavior
+% [~,td] = getTDidx(trial_data,'result','R');
+% 
+% td = getMoveOnsetAndPeak(td,struct('start_idx','idx_goCueTime','end_idx','idx_endTime','s_thresh',20));
+% 
+% td = removeBadTrials(td);
+% 
+% metric = getLearningMetrics(td,struct('which_metric','curvature','time_window',{{'idx_movement_on',0;'idx_movement_on',20}}));
+% 
+% bl_idx = getTDidx(td,'epoch','BL');
+% ad_idx = getTDidx(td,'epoch','AD');
+% wo_idx = getTDidx(td,'epoch','WO');
+% 
+% figure
+% % plot([metric(bl_idx);metric(wo_idx)])
+% plot(metric)
+% hold on
+% plot(repmat(ad_idx(1),2,1),[-1 1],'k--','linewidth',3)
+% plot(repmat(wo_idx(1),2,1),[-1 1],'k--','linewidth',3) 
 
 %% Try mahalanobis distance on time-spread PCA
 % base_clusters = cell(8,1);
