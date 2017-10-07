@@ -164,25 +164,73 @@ blocks{6} = getTDidx(td,'epoch','AD','range',[0.5 0.75]);
 sort_idx = find(td(1).S1_unit_guide(:,2));
 td = getDPCA(td,blocks,'bumpDir',struct('signals',{{'S1_spikes',sort_idx}},'do_plot',true,'num_dims',10));
 % 
-% %% check out behavior
-% [~,td] = getTDidx(trial_data,'result','R');
+%% check out behavior
+[~,td] = getTDidx(trial_data,'result','R');
+
+td = getSpeed(td);
+td = getMoveOnsetAndPeak(td,struct('start_idx','idx_goCueTime','end_idx','idx_endTime'));
+% td = getMoveOnsetAndPeak(td,struct('start_idx','idx_goCueTime','end_idx','idx_endTime','which_method','thresh','s_thresh',20));
+
+td = removeBadTrials(td);
+
+metric = getLearningMetrics(td,struct('which_metric','angle','vel_or_pos','pos','time_window',{{'idx_movement_on',0;'idx_peak_speed',0}}));
+% metric = getLearningMetrics(td,struct('which_metric','curvature'));
+
+bl_idx = getTDidx(td,'epoch','BL');
+ad_idx = getTDidx(td,'epoch','AD');
+wo_idx = getTDidx(td,'epoch','WO');
+
+figure
+% plot([metric(bl_idx);metric(wo_idx)])
+plot(metric)
+hold on
+plot(repmat(ad_idx(1),2,1),[-1 1],'k--','linewidth',3)
+plot(repmat(wo_idx(1),2,1),[-1 1],'k--','linewidth',3)
+plot([0 wo_idx(end)],[0 0],'k-','linewidth',2)
+
+%% Plot reaches
+[~,td] = getTDidx(trial_data,'result','R');
+
+td = getSpeed(td);
+td = getMoveOnsetAndPeak(td,struct('start_idx','idx_goCueTime','end_idx','idx_endTime'));
+
+td1 = trimTD(td,{'idx_movement_on',0},{'idx_peak_speed',0});
+td2 = trimTD(td,{'idx_movement_on',0},{'idx_endTime',0});
+
+epochs = {'BL','AD','WO'};
+
+% [~,td1bl] = getTDidx(td1,'epoch','BL');
+% [~,td1ad] = getTDidx(td1,'epoch','AD');
+% [~,td1wo] = getTDidx(td1,'epoch','WO');
+% [~,td2bl] = getTDidx(td2,'epoch','BL');
+% [~,td2ad] = getTDidx(td2,'epoch','AD');
+% [~,td2wo] = getTDidx(td2,'epoch','WO');
 % 
-% td = getMoveOnsetAndPeak(td,struct('start_idx','idx_goCueTime','end_idx','idx_endTime','s_thresh',20));
-% 
-% td = removeBadTrials(td);
-% 
-% metric = getLearningMetrics(td,struct('which_metric','curvature','time_window',{{'idx_movement_on',0;'idx_movement_on',20}}));
-% 
-% bl_idx = getTDidx(td,'epoch','BL');
-% ad_idx = getTDidx(td,'epoch','AD');
-% wo_idx = getTDidx(td,'epoch','WO');
-% 
-% figure
-% % plot([metric(bl_idx);metric(wo_idx)])
-% plot(metric)
-% hold on
-% plot(repmat(ad_idx(1),2,1),[-1 1],'k--','linewidth',3)
-% plot(repmat(wo_idx(1),2,1),[-1 1],'k--','linewidth',3) 
+% pos1{1} = cat(1,td1bl.pos);
+% pos2{1} = cat(1,td2bl.pos);
+% pos1{2} = cat(1,td1ad.pos);
+% pos2{2} = cat(1,td2ad.pos);
+% pos1{3} = cat(1,td1wo.pos);
+% pos2{3} = cat(1,td2wo.pos);
+colors = {'b','r','g'};
+
+figure
+for i=1:3
+    subplot(1,2,1)
+    [~,td_temp] = getTDidx(td1,'epoch',epochs{i});
+    for j=1:length(td_temp)
+        plot(td_temp(j).pos(:,1),td_temp(j).pos(:,2),colors{i})
+        hold on
+    end
+    set(gca,'box','off','tickdir','out','xlim',[-15 15],'ylim',[-45,-15])
+    subplot(1,2,2)
+    [~,td_temp] = getTDidx(td2,'epoch',epochs{i});
+    for j=1:length(td_temp)
+        plot(td_temp(j).pos(:,1),td_temp(j).pos(:,2),colors{i})
+        hold on
+    end
+    set(gca,'box','off','tickdir','out','xlim',[-15 15],'ylim',[-45,-15])
+end
 
 %% Try mahalanobis distance on time-spread PCA
 % base_clusters = cell(8,1);
