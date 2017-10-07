@@ -171,7 +171,7 @@ td = getSpeed(td);
 td = getMoveOnsetAndPeak(td,struct('start_idx','idx_goCueTime','end_idx','idx_endTime'));
 % td = getMoveOnsetAndPeak(td,struct('start_idx','idx_goCueTime','end_idx','idx_endTime','which_method','thresh','s_thresh',20));
 
-td = removeBadTrials(td);
+td = removeBadTrials(td,struct('remove_nan_idx',false));
 
 metric = getLearningMetrics(td,struct('which_metric','angle','vel_or_pos','pos','time_window',{{'idx_movement_on',0;'idx_peak_speed',0}}));
 % metric = getLearningMetrics(td,struct('which_metric','curvature'));
