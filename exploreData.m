@@ -163,17 +163,18 @@ blocks{6} = getTDidx(td,'epoch','AD','range',[0.5 0.75]);
 % get actual dPCA
 sort_idx = find(td(1).S1_unit_guide(:,2));
 td = getDPCA(td,blocks,'bumpDir',struct('signals',{{'S1_spikes',sort_idx}},'do_plot',true,'num_dims',10));
-% 
+ 
 %% check out behavior
 [~,td] = getTDidx(trial_data,'result','R');
 
+td = removeBadTrials(td,struct('remove_nan_idx',false));
 td = getSpeed(td);
 td = getMoveOnsetAndPeak(td,struct('start_idx','idx_goCueTime','end_idx','idx_endTime'));
 % td = getMoveOnsetAndPeak(td,struct('start_idx','idx_goCueTime','end_idx','idx_endTime','which_method','thresh','s_thresh',20));
 
-td = removeBadTrials(td,struct('remove_nan_idx',false));
 
-metric = getLearningMetrics(td,struct('which_metric','angle','vel_or_pos','pos','time_window',{{'idx_movement_on',0;'idx_peak_speed',0}}));
+metric = getLearningMetrics(td,struct('which_metric','angle','fit_bl_ref_curve',true,'vel_or_pos','pos','time_window',{{'idx_movement_on',0;'idx_peak_speed',0}}));
+% metric = getLearningMetrics(td,struct('which_metric','corr'));
 % metric = getLearningMetrics(td,struct('which_metric','curvature'));
 
 bl_idx = getTDidx(td,'epoch','BL');
