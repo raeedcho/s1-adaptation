@@ -37,15 +37,54 @@ function bumpcurl_analysis(trial_data)
     td = getSpeed(td);
     td = getMoveOnsetAndPeak(td,struct('start_idx','idx_goCueTime','end_idx','idx_endTime'));
 
+    % scale spikes by binsize
+    for i = 1:length(td)
+        td(i).S1_spikes = td(i).S1_spikes/td(i).bin_size;
+    end
+
     [~,td_bl] = getTDidx(td,'epoch','BL');
-    td_bl = trimTD(td_bl,{'idx_bumpTime',0},{'idx_bumpTime',30});
+    td_bl = trimTD(td_bl,{'idx_bumpTime',0},{'idx_bumpTime',15});
     
-    visData(td_bl,struct('trials_to_plot',getTDidx(td_bl,'bumpDir',90)));
+    % visData(td_bl,struct('trials_to_plot',getTDidx(td_bl,'bumpDir',90)));
 
     % get PEH for all neurons and all directions
     td_bl = trialAverage(td_bl,'bumpDir');
 
     % plot PEH for each direction on super plot for each neuron
+    % num_neurons = size(td_bl(1).S1_spikes,2);
+    num_neurons = 10;
+    num_dirs = length(td_bl);
+    % get max FRs
+    spikes = cat(1,td_bl.S1_spikes);
+    maxFRs = max(spikes,[],1);
+    for fignum = 1:4
+        figure(fignum)
+        for neuron_ctr = 1:num_neurons
+            true_neur_num = num_neurons*(fignum-1)+neuron_ctr;
+            % do some sort of figure
+            for dir_ctr = 1:num_dirs
+                % get plotnumber
+                plotnum = (1+num_dirs)*(neuron_ctr-1)+dir_ctr;
+                subplot(num_neurons,num_dirs+1,plotnum)
+                plot(td_bl(dir_ctr).S1_spikes(:,true_neur_num),'linewidth',2)
+                set(gca,'ylim',[0 maxFRs(true_neur_num)])
+            end
+        end
+    end
+
+    td_bl = binTD(td_bl,15);
+    dirs = repmat(cat(1,td_bl.bumpDir),2,1);
+    spikes = repmat(cat(1,td_bl.S1_spikes),2,1);
+    for fignum = 1:4
+        figure(fignum)
+        for neuron_ctr = 1:num_neurons
+            true_neur_num = num_neurons*(fignum-1)+neuron_ctr;
+            plotnum = (1+num_dirs)*(neuron_ctr);
+            subplot(num_neurons,num_dirs+1,plotnum)
+            h = polar(dirs*pi/180,spikes(:,true_neur_num));
+            set(h,'linewidth',2);
+        end
+    end
 
 %% Look at tuning of neurons in baseline and washout
     % Han_20171206
@@ -154,11 +193,11 @@ function bumpcurl_analysis(trial_data)
     [~,td_wo] = getTDidx(td,'epoch','WO');
 
     % trim to bumps + 150 ms
-    % td_bl = trimTD(td_bl,{'idx_bumpTime',0},{'idx_bumpTime',15});
-    td_bl = trimTD(td_bl,{'idx_movement_on',0},{'idx_movement_on',30});
+    td_bl = trimTD(td_bl,{'idx_bumpTime',0},{'idx_bumpTime',15});
+    % td_bl = trimTD(td_bl,{'idx_movement_on',0},{'idx_movement_on',30});
     td_bl = binTD(td_bl,15);
-    % td_wo = trimTD(td_wo,{'idx_bumpTime',0},{'idx_bumpTime',15});
-    td_wo = trimTD(td_wo,{'idx_movement_on',0},{'idx_movement_on',30});
+    td_wo = trimTD(td_wo,{'idx_bumpTime',0},{'idx_bumpTime',15});
+    % td_wo = trimTD(td_wo,{'idx_movement_on',0},{'idx_movement_on',30});
     td_wo = binTD(td_wo,15);
 
     % Get spikes and velocities into matrices
@@ -175,8 +214,8 @@ function bumpcurl_analysis(trial_data)
     % fit models
     xlm = fitlm(bl_spikes(train_idx,:),bl_vel(train_idx,1));
     ylm = fitlm(bl_spikes(train_idx,:),bl_vel(train_idx,2));
-    % velnet = feedforwardnet([10]);
-    % velnet = train(velnet,bl_spikes(train_idx,:)',bl_vel(train_idx,:)');
+    velnet = feedforwardnet([10]);
+    velnet = train(velnet,bl_spikes(train_idx,:)',bl_vel(train_idx,:)');
 
     % predict basline test set
     bl_vel_pred = [xlm.predict(bl_spikes(test_idx,:)) ylm.predict(bl_spikes(test_idx,:))];
