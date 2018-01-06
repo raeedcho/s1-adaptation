@@ -200,46 +200,46 @@ function bumpcurl_analysis(trial_data)
     % td_wo = trimTD(td_wo,{'idx_movement_on',0},{'idx_movement_on',30});
     td_wo = binTD(td_wo,15);
 
-    % Get spikes and velocities into matrices
-    bl_spikes = cat(1,td_bl.S1_spikes);
-    bl_vel = cat(1,td_bl.vel);
-    bl_dir = atan2(bl_vel(:,2),bl_vel(:,1));
-    wo_spikes = cat(1,td_wo.S1_spikes);
-    wo_vel = cat(1,td_wo.vel);
-    wo_dir = atan2(wo_vel(:,2),wo_vel(:,1));
-
     % crossvalidation sets to look at prediction capabilities
     [train_idx,test_idx] = crossvalind('HoldOut',length(td_bl),0.2);
 
+    % Get spikes and velocities into matrices
+    bl_vel = cat(1,td_bl.vel);
+    wo_vel = cat(1,td_wo.vel);
+    bl_dir = atan2(bl_vel(:,2),bl_vel(:,1));
+    wo_dir = atan2(wo_vel(:,2),wo_vel(:,1));
+
     % fit models
-    xlm = fitlm(bl_spikes(train_idx,:),bl_vel(train_idx,1));
-    ylm = fitlm(bl_spikes(train_idx,:),bl_vel(train_idx,2));
-    velnet = feedforwardnet([10]);
-    velnet = train(velnet,bl_spikes(train_idx,:)',bl_vel(train_idx,:)');
+    [td_bl,bl_linmodel] = getModel(td_bl,struct('model_type','linmodel',...
+        'model_name','vel_from_spikes','out_signals',{{'vel'}},...
+        'in_signals',{'S1_spikes'},'train_idx',find(train_idx)));
+    [td_bl,bl_nnmodel] = getModel(td_bl,struct('model_type','nn',...
+        'model_name','vel_from_spikes','out_signals',{{'vel'}},...
+        'in_signals',{'S1_spikes'},'train_idx',find(train_idx)));
 
     % predict basline test set
-    bl_vel_pred = [xlm.predict(bl_spikes(test_idx,:)) ylm.predict(bl_spikes(test_idx,:))];
-    bl_dir_pred = atan2(bl_vel_pred(:,2),bl_vel_pred(:,1));
-    bl_vel_vaf = [compute_vaf(bl_vel(test_idx,1),bl_vel_pred(:,1)),...
-                    compute_vaf(bl_vel(test_idx,2),bl_vel_pred(:,2))];
-    bl_dir_vaf = compute_vaf(bl_dir(test_idx),bl_dir_pred);
+    bl_lmvel_pred = cat(1,td_bl.linmodel_vel_from_spikes);
+    bl_nnvel_pred = cat(1,td_bl.nn_vel_from_spikes);
+    bl_dir_lmpred = atan2(bl_lmvel_pred(:,2),bl_lmvel_pred(:,1));
+    bl_dir_nnpred = atan2(bl_nnvel_pred(:,2),bl_nnvel_pred(:,1));
 
     % plot predictions vs trial
     figure
-    plot((1:sum(test_idx))',minusPi2Pi(bl_dir_pred-bl_dir(test_idx)),'o','linewidth',2);
+    plot((1:sum(test_idx))',minusPi2Pi(bl_dir_lmpred(test_idx)-bl_dir(test_idx)),'o','linewidth',2);
     hold on
     plot([1 sum(test_idx)],[0 0],'--k','linewidth',2);
 
     % predict washout
-    wo_vel_pred = [xlm.predict(wo_spikes) ylm.predict(wo_spikes)];
-    wo_dir_pred = atan2(wo_vel_pred(:,2),wo_vel_pred(:,1));
-    wo_vel_vaf = [compute_vaf(wo_vel(:,1),wo_vel_pred(:,1)),...
-                    compute_vaf(wo_vel(:,2),wo_vel_pred(:,2))];
-    wo_dir_vaf = compute_vaf(wo_dir,wo_dir_pred);
+    td_wo = getModel(td_wo,bl_linmodel);
+    td_wo = getModel(td_wo,bl_nnmodel);
+    wo_lmvel_pred = cat(1,td_wo.linmodel_vel_from_spikes);
+    wo_nnvel_pred = cat(1,td_wo.nn_vel_from_spikes);
+    wo_dir_lmpred = atan2(wo_lmvel_pred(:,2),wo_lmvel_pred(:,1));
+    wo_dir_nnpred = atan2(wo_nnvel_pred(:,2),wo_nnvel_pred(:,1));
 
     % plot predictions vs trial
     figure
-    plot((1:length(wo_dir))',minusPi2Pi(wo_dir_pred-wo_dir),'ro','linewidth',2);
+    plot((1:length(wo_dir))',minusPi2Pi(wo_dir_lmpred-wo_dir),'ro','linewidth',2);
     hold on
     plot([1 length(wo_dir)],[0 0],'--k','linewidth',2);
 
@@ -285,3 +285,44 @@ function bumpcurl_analysis(trial_data)
     end
 
 %% Fit GLM to kinematics at end of adaptation and evaluate R^2 going backwards
+    % Han_20171206
+    clearvars -except trial_data
+    % get only rewards
+    [~,td] = getTDidx(trial_data,'result','R');
+    td = removeBadTrials(td,struct('remove_nan_idx',false));
+    
+    % split into baseline and washout
+    [~,td_ad] = getTDidx(td,'epoch','AD');
+    
+    % trim to just bumps
+    td_ad = trimTD(td_ad,{'idx_goCueTime',0},{'idx_endTime',0});
+    td_ad = binTD(td_ad,5);
+    
+    % fit glm to baseline
+    [td_ad,ad_model] = getModel(td_ad,struct('model_type','glm',...
+        'model_name','S1_handle','in_signals',{{'pos';'vel';'force'}},...
+        'out_signals',{'S1_spikes'},'train_idx',(length(td_ad)-150):length(td_ad)));
+    
+    % evaluate washout period
+    eval_params = ad_model;
+    eval_params.eval_metric = 'pr2';
+    eval_params.trial_idx = [1 length(td_ad)];
+    full_eval = evalModel(td_ad,eval_params);
+    eval_params.trial_idx = [length(td_ad)-150 length(td_ad)];
+    part_eval = evalModel(td_ad,eval_params);
+    eval_params.trial_idx = 1:30:length(td_ad);
+    ad_eval = evalModel(td_ad,eval_params);
+    
+    % plot resulting evals
+    figure
+    trial_num = eval_params.trial_idx(1:end-1);
+    for i=1:size(ad_eval,2)
+        clf;
+        single_eval = squeeze(ad_eval(:,i,:));
+        patch([trial_num';flipud(trial_num')],[single_eval(:,1);flipud(single_eval(:,2))],[1,0,0]);
+        hold on
+        plot(trial_num,zeros(size(trial_num)),'--k','linewidth',2)
+        waitforbuttonpress
+    end
+
+%% look at pR2 vs num spikes
