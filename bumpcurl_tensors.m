@@ -7,9 +7,8 @@
         td = smoothSignals(td,struct('signals','markers'));
         td = getDifferential(td,struct('signals','markers','alias','marker_vel'));
         % add firing rates rather than spike counts
-        td = addFiringRates(td,struct('array','S1'));
-        td = smoothSignals(td,struct('signals',{{'S1_spikes'}},'calc_rate',true,'kernel_SD',0.05));
-        td = sqrtTransform(td,'S1_spikes');
+        % td = smoothSignals(td,struct('signals',{{'S1_spikes'}},'calc_rate',true,'kernel_SD',0.05));
+        % td = sqrtTransform(td,'S1_spikes');
 
         % Remove unsorted channels
         keepers = (td(1).S1_unit_guide(:,2)~=0);
@@ -21,7 +20,7 @@
         % trim to just movement
         % num_bins_before = floor(still_bins/2);
         num_bins_before = 30;
-        num_bins_after = 60;
+        num_bins_after = 100;
         
         td= trimTD(td,struct('idx_start',{{'idx_movement_on',-num_bins_before}},'idx_end',{{'idx_movement_on',num_bins_after}},'zero_pad',true));
         % clean nans out...?
@@ -34,56 +33,37 @@
         % colormap
         cm_viridis = viridis(200);
 
-    % make tensor
+    % make tensors and decompose
         num_neurons = length(td(1).S1_unit_guide);
         num_markers = size(td(1).markers,2);
         num_timepoints = num_bins_before+num_bins_after+1;
         num_trials = length(td);
-        neural_data = tensor(cat(3,td.S1_spikes)); % dimensions are timepoints x neurons x trials
-        behave_data = tensor(cat(2,cat(3,td.marker_vel),cat(3,td.markers))); % dimensions are timepoints x markers x trials
-
-    % decompose
         num_factors = 10;
-        M_behave = cp_als(behave_data,num_factors);
-        M_neural = cp_als(neural_data,num_factors);
 
-    % Look at temporal factors
-        neural_temporal = M_neural.U{1};
-        timevec = ((1:num_timepoints)-num_bins_before-1)*td(1).bin_size;
-        figure
-        for i = 1:num_factors
-            subplot(5,2,i)
-            plot(timevec,neural_temporal(:,i),'-k','linewidth',3)
-            hold on
-            plot(timevec([1 end]),[0 0],'-k','linewidth',2)
-            plot([0 0],ylim,'--k','linewidth',2)
+        if isfield(td,'emg')
+            emg_data = cat(3,td.emg); % dimensions are timepoints x emg x trials
+            emg_data = emg_data-repmat(mean(mean(emg_data,3),1),num_timepoints,1,num_trials);
+            emg_tensor = tensor(emg_data);
+            M_emg = cp_als(emg_tensor,num_factors,'maxiters',100,'printitn',10);
         end
+        
+        behave_data = cat(2,cat(3,td.marker_vel),cat(3,td.markers)); % dimensions are timepoints x markers x trials
+        behave_data = behave_data-repmat(mean(mean(behave_data,3),1),num_timepoints,1,num_trials);
+        behave_tensor = tensor(behave_data);
+        M_behave = cp_als(behave_tensor,num_factors,'maxiters',200,'printitn',10);
 
-    % Look at trial factors
-        % color by direction
+        neural_data = cat(3,td.S1_spikes); % dimensions are timepoints x neurons x trials
+        neural_tensor = tensor(neural_data);
+        tic;
+        M_neural = cp_apr(neural_tensor,num_factors,'maxiters',100,'printitn',10);
+        toc
+
+    % color by direction
         num_colors = 4;
         dir_colors = linspecer(num_colors);
         trial_dirs = cat(1,td.target_direction);
         dir_idx = mod(round(trial_dirs/(2*pi/num_colors)),num_colors)+1;
         trial_colors = dir_colors(dir_idx,:);
 
-        neural_trial = M_neural.U{3};
-        trialvec = 1:num_trials;
-        figure
-        for i = 1:num_factors
-            subplot(5,2,i)
-            scatter(trialvec,neural_trial(:,i),[],trial_colors,'filled')
-            hold on
-            plot(trialvec([1 end]),[0 0],'-k','linewidth',2)
-        end
-
-    % Look at neural/marker factors
-        neural_markers = M_neural.U{2};
-        neuralvec = 1:num_neurons;
-        figure
-        for i = 1:num_factors
-            subplot(5,2,i)
-            bar(neuralvec,neural_markers(:,i))
-        end
-        
-
+    % plot tensor decomposition
+        plotTensorDecomp(M_neural,struct('trial_colors',trial_colors,'bin_size',td(1).bin_size,'temporal_zero',num_bins_before+1))
