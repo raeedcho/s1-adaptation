@@ -1,0 +1,12 @@
+session_name: S1Adapt
+start_directory: ./ # load session relative to config location
+windows:
+    - window_name: s1-adapt
+      focus: True
+      layout: main-vertical
+      options:
+          main-pane-width: 100
+      panes:
+          - matlab -nodesktop
+          - focus: True
+            shell_command: vim
