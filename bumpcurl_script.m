@@ -14,7 +14,7 @@
     filenames = horzcat({file_info.name})';
 
     % plotting variables
-    monkey_names = {'H'};
+    monkey_names = {'Duncan','H'};
     arrayname = 'S1';
     neural_signals = [arrayname '_FR'];
 
@@ -27,18 +27,20 @@
         % rename trial_data for ease
         td = td.trial_data;
     
-        % first process marker data
-        % find times when markers are NaN and replace with zeros temporarily
-        for trialnum = 1:length(td)
-            markernans = isnan(td(trialnum).markers);
-            td(trialnum).markers(markernans) = 0;
-            td(trialnum) = smoothSignals(td(trialnum),struct('signals','markers'));
-            td(trialnum).markers(markernans) = NaN;
-            clear markernans
-        end
+        % first process marker data (if it's there)
+        if isfield(td,'markers')
+            % find times when markers are NaN and replace with zeros temporarily
+            for trialnum = 1:length(td)
+                markernans = isnan(td(trialnum).markers);
+                td(trialnum).markers(markernans) = 0;
+                td(trialnum) = smoothSignals(td(trialnum),struct('signals','markers'));
+                td(trialnum).markers(markernans) = NaN;
+                clear markernans
+            end
     
-        % get marker velocity
-        td = getDifferential(td,struct('signals','markers','alias','marker_vel'));
+            % get marker velocity
+            td = getDifferential(td,struct('signals','markers','alias','marker_vel'));
+        end
         
         % get speed and ds
         td = getNorm(td,struct('signals','vel','field_extra','_norm'));
@@ -74,8 +76,6 @@
                     'result',...
                     'bumpDir',...
                     'tgtDir',...
-                    'ctrHoldBump',...
-                    'ctrHold',...
                     }},...
                 'start_name','idx_startTime',...
                 'end_name','idx_endTime'));
@@ -88,29 +88,33 @@
         nanners = isnan(cat(1,td.tgtDir));
         td = td(~nanners);
         fprintf('Removed %d trials because of missing target direction\n',sum(nanners))
-        biggers = cat(1,td.ctrHoldBump) & abs(cat(1,td.bumpDir))>360;
-        td = td(~biggers);
-        fprintf('Removed %d trials because bump direction makes no sense\n',sum(biggers))
+        % biggers = ~isnan(cat(1,td.bumpDir)) & abs(cat(1,td.bumpDir))>360;
+        % td = td(~biggers);
+        % fprintf('Removed %d trials because bump direction makes no sense\n',sum(biggers))
     
         % remove trials where markers aren't present
-        bad_trial = false(length(td),1);
-        for trialnum = 1:length(td)
-            if any(any(isnan(td(trialnum).markers)))
-                bad_trial(trialnum) = true;
+        if isfield(td,'markers')
+            bad_trial = false(length(td),1);
+            for trialnum = 1:length(td)
+                if any(any(isnan(td(trialnum).markers)))
+                    bad_trial(trialnum) = true;
+                end
             end
+            td(bad_trial) = [];
+            fprintf('Removed %d trials because of missing markers\n',sum(bad_trial))
         end
-        td(bad_trial) = [];
-        fprintf('Removed %d trials because of missing markers\n',sum(bad_trial))
         
         % remove trials where muscles aren't present
-        bad_trial = false(length(td),1);
-        for trialnum = 1:length(td)
-            if any(any(isnan(td(trialnum).muscle_len) | isnan(td(trialnum).muscle_vel)))
-                bad_trial(trialnum) = true;
+        if isfield(td,'muscle_len')
+            bad_trial = false(length(td),1);
+            for trialnum = 1:length(td)
+                if any(any(isnan(td(trialnum).muscle_len) | isnan(td(trialnum).muscle_vel)))
+                    bad_trial(trialnum) = true;
+                end
             end
+            td(bad_trial) = [];
+            fprintf('Removed %d trials because of missing muscles\n',sum(bad_trial))
         end
-        td(bad_trial) = [];
-        fprintf('Removed %d trials because of missing muscles\n',sum(bad_trial))
         
         % find the relevant movmement onsets
         td = getMoveOnsetAndPeak(td,struct(...
@@ -147,9 +151,9 @@
             'which_metric','angle',...
             'use_bl_ref',true,...
             'fit_bl_ref_curve',false,...
-            'vel_or_pos','vel',...
+            'vel_or_pos','pos',...
             'target_dir_fieldname','tgtDir',...
-            'time_window',{{'idx_movement_on',0;'idx_movement_on',30}}));
+            'time_window',{{'idx_movement_on',0;'idx_movement_on',60}}));
 
         % plot metrics
         smoothing_window_size = 5;
@@ -221,14 +225,23 @@
         td = trial_data_cell{filenum};
 
         % trim from go cue to end time (skip bump)
-        td = smoothSignals(td,struct('signals',{'S1_spikes'}));
+        if ~isfield(td,'trial_type')
+            td = smoothSignals(td,struct('signals',{'S1_spikes'}));
+        end
         td = trimTD(td,{'idx_movement_on',-10},{'idx_movement_on',60});
     
         % assign target direction blocks
         tgt_dirs = cat(2,td.tgtDir);
         unique_tgt_dirs = unique(tgt_dirs);
         % assume 16 targets and reassign to one of 4
-        tgt_block_assign = reshape(repmat([1 2 3 4],4,1),1,16);
+        switch length(unique_tgt_dirs)
+            case 16
+                tgt_block_assign = reshape(repmat([1 2 3 4],4,1),1,16);
+            case 8
+                tgt_block_assign = reshape(repmat([1 2 3 4],2,1),1,8);
+            case 4
+                tgt_block_assign = [1 2 3 4];
+        end
         for dirnum = 1:length(unique_tgt_dirs)
             trial_idx = getTDidx(td,'tgtDir',unique_tgt_dirs(dirnum));
             [td(trial_idx).tgt_dir_block] = deal(tgt_block_assign(dirnum));
@@ -242,15 +255,11 @@
 
         % get dPCA conditions
         learning_blocks = {...
-            getTDidx(td_dpca,'epoch','BL','range',[0.25 0.75]),...
             getTDidx(td_dpca,'epoch','AD','range',[0 0.25]),...
-            getTDidx(td_dpca,'epoch','AD','range',[0.25 0.5]),...
-            getTDidx(td_dpca,'epoch','AD','range',[0.5 0.75]),...
             getTDidx(td_dpca,'epoch','AD','range',[0.75 1]),...
-            getTDidx(td_dpca,'epoch','WO','range',[0 0.3]),...
-            getTDidx(td_dpca,'epoch','WO','range',[0.3 0.6])
             };
 
         % get actual dPCA
         td_dpca = runDPCA(td_dpca,'tgt_dir_block',learning_blocks,struct('signals',{'S1_spikes'},'do_plot',true,'num_dims',10));
     end
+
