@@ -10,13 +10,8 @@
         dataroot = '/data/raeed/project-data/limblab/s1-adapt';
     end
     
-    file_info = dir(fullfile(dataroot,'td-library','*CObumpcurl*.mat'));
+    file_info = dir(fullfile(dataroot,'td-library','*CO*.mat'));
     filenames = horzcat({file_info.name})';
-
-    % plotting variables
-    monkey_names = {'Duncan','H'};
-    arrayname = 'S1';
-    neural_signals = [arrayname '_FR'];
 
 %% Loop through trial data files to clean them up
     trial_data_cell = cell(1,length(filenames));
@@ -26,8 +21,19 @@
     
         % rename trial_data for ease
         td = td.trial_data;
-    
-        % first process marker data (if it's there)
+
+        % make Kyle's and Matt's data consistent with my conventions
+        td = aliasTDfields(td,struct('alias_list',{{...
+            'trial_type','epoch';...
+            'S1_spikes_bins','binned_S1';...
+            'target_direction','tgtDir';...
+            'trial_id','trialID';...
+            'idx_trial_start','idx_startTime';...
+            'idx_trial_end','idx_endTime';...
+            'idx_go_cue','idx_goCueTime';...
+            }}));
+
+        % process marker data (if it's there)
         if isfield(td,'markers')
             % find times when markers are NaN and replace with zeros temporarily
             for trialnum = 1:length(td)
@@ -47,16 +53,20 @@
         td = getDifferential(td,struct('signals','vel_norm','alias','dvel_norm'));
         
         % remove unsorted neurons
-        for trialnum = 1:length(td)
-            unit_ids = td(trialnum).([arrayname '_unit_guide']);
-            unsorted_units = (unit_ids(:,2)==0);
-            new_unit_guide = unit_ids(~unsorted_units,:);
+        arrays_in_td = getTDfields(td,'arrays');
+        for arraynum = 1:length(arrays_in_td)
+            arrayname = arrays_in_td{arraynum};
+            for trialnum = 1:length(td)
+                unit_ids = td(trialnum).([arrayname '_unit_guide']);
+                unsorted_units = (unit_ids(:,2)==0);
+                new_unit_guide = unit_ids(~unsorted_units,:);
 
-            td(trialnum).(sprintf('%s_unit_guide',arrayname)) = new_unit_guide;
-            
-            spikes = td(trialnum).(sprintf('%s_spikes',arrayname));
-            spikes(:,unsorted_units) = [];
-            td(trialnum).(sprintf('%s_spikes',arrayname)) = spikes;
+                td(trialnum).(sprintf('%s_unit_guide',arrayname)) = new_unit_guide;
+                
+                spikes = td(trialnum).(sprintf('%s_spikes',arrayname));
+                spikes(:,unsorted_units) = [];
+                td(trialnum).(sprintf('%s_spikes',arrayname)) = spikes;
+            end
         end
 
         % check to make sure unit guides are consistent
@@ -74,14 +84,14 @@
                 'linked_fields',{{...
                     'trialID',...
                     'result',...
-                    'bumpDir',...
                     'tgtDir',...
                     }},...
                 'start_name','idx_startTime',...
                 'end_name','idx_endTime'));
         reward_idx = [td.result]=='R';
         incomplete_idx = [td.result]=='I';
-        td = td(reward_idx | incomplete_idx);
+        % td = td(reward_idx | incomplete_idx);
+        td = td(reward_idx);
         td = reorderTDfields(td);
         
         % clean nans out...?
@@ -117,14 +127,16 @@
         end
         
         % find the relevant movmement onsets
-        td = getMoveOnsetAndPeak(td,struct(...
-            'start_idx','idx_goCueTime',...
-            'start_idx_offset',20,...
-            'peak_idx_offset',20,...
-            'end_idx','idx_endTime',...
-            'method','peak',...
-            'peak_divisor',10,...
-            'min_ds',1));
+        if ~isfield(td,'idx_movement_on')
+            td = getMoveOnsetAndPeak(td,struct(...
+                'start_idx','idx_goCueTime',...
+                'start_idx_offset',15,...
+                'peak_idx_offset',20,...
+                'end_idx','idx_endTime',...
+                'method','peak',...
+                'peak_divisor',10,...
+                'min_ds',1));
+        end
 
         % remove low firing neurons
         td = removeBadNeurons(td,struct(...
@@ -153,7 +165,7 @@
             'fit_bl_ref_curve',false,...
             'vel_or_pos','pos',...
             'target_dir_fieldname','tgtDir',...
-            'time_window',{{'idx_movement_on',0;'idx_movement_on',60}}));
+            'time_window',{{'idx_movement_on',0;'idx_movement_on',40}}));
 
         % plot metrics
         smoothing_window_size = 5;
@@ -225,10 +237,9 @@
         td = trial_data_cell{filenum};
 
         % trim from go cue to end time (skip bump)
-        if ~isfield(td,'trial_type')
-            td = smoothSignals(td,struct('signals',{'S1_spikes'}));
-        end
-        td = trimTD(td,{'idx_movement_on',-10},{'idx_movement_on',60});
+        spikes_in_td = getTDfields(td,'spikes');
+        td = smoothSignals(td,struct('signals',{spikes_in_td}));
+        td = trimTD(td,{'idx_movement_on',-10},{'idx_movement_on',50});
     
         % assign target direction blocks
         tgt_dirs = cat(2,td.tgtDir);
@@ -255,11 +266,14 @@
 
         % get dPCA conditions
         learning_blocks = {...
-            getTDidx(td_dpca,'epoch','AD','range',[0 0.25]),...
-            getTDidx(td_dpca,'epoch','AD','range',[0.75 1]),...
+            getTDidx(td_dpca,'epoch','AD','range',[0 0.3]),...
+            getTDidx(td_dpca,'epoch','AD','range',[0.3 0.6]),...
+            getTDidx(td_dpca,'epoch','AD','range',[0.6 1]),...
             };
 
         % get actual dPCA
-        td_dpca = runDPCA(td_dpca,'tgt_dir_block',learning_blocks,struct('signals',{'S1_spikes'},'do_plot',true,'num_dims',10));
+        for arraynum = 1:length(spikes_in_td)
+            td_dpca = runDPCA(td_dpca,'tgt_dir_block',learning_blocks,struct('signals',spikes_in_td(arraynum),'do_plot',true,'num_dims',10));
+        end
     end
 
