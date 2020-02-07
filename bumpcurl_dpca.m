@@ -238,8 +238,8 @@
 
         % trim from go cue to end time (skip bump)
         spikes_in_td = getTDfields(td,'spikes');
-        td = smoothSignals(td,struct('signals',{spikes_in_td}));
-        td = trimTD(td,{'idx_movement_on',-10},{'idx_movement_on',50});
+        % td = smoothSignals(td,struct('signals',{spikes_in_td}));
+        td = trimTD(td,{'idx_movement_on',-20},{'idx_movement_on',100});
     
         % assign target direction blocks
         tgt_dirs = cat(2,td.tgtDir);
@@ -266,9 +266,11 @@
 
         % get dPCA conditions
         learning_blocks = {...
+            getTDidx(td_dpca,'epoch','BL','range',[0.5 1]),...
             getTDidx(td_dpca,'epoch','AD','range',[0 0.3]),...
             getTDidx(td_dpca,'epoch','AD','range',[0.3 0.6]),...
             getTDidx(td_dpca,'epoch','AD','range',[0.6 1]),...
+            getTDidx(td_dpca,'epoch','WO','range',[0 0.3]),...
             };
 
         % get actual dPCA
