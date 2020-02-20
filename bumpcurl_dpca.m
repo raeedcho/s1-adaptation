@@ -289,7 +289,7 @@
             td_dpca = runDPCA(td_dpca,'tgt_dir_block',learning_blocks,struct(...
                 'signals',spikes_in_td(arraynum),...
                 'do_plot',true,'num_dims',10));
-            saveas(gcf,sprintf('%s_%s_%s_dPCA.png',td(1).monkey,strrep(td(1).date_time,'/','-'),spikes_in_td{arraynum}))
+            saveas(gcf,sprintf('%s_%s_%s_dPCA.pdf',td(1).monkey,strrep(td(1).date_time,'/','-'),spikes_in_td{arraynum}))
         end
     end
 
