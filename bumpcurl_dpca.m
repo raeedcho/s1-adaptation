@@ -5,19 +5,20 @@
 
 %% Set up meta info
     if ispc
-        dataroot = 'G:\raeed\project-data\limblab\s1-adapt';
+        % dataroot = 'G:\raeed\project-data';
+        dataroot = 'C:\Users\Raeed\data\project-data';
     else
-        dataroot = '/data/raeed/project-data/limblab/s1-adapt';
+        dataroot = '/data/raeed/project-data';
     end
     
-    file_info = dir(fullfile(dataroot,'td-library','*CO*.mat'));
+    file_info = dir(fullfile(dataroot,'limblab','s1-adapt','td-library','*CO*.mat'));
     filenames = horzcat({file_info.name})';
 
 %% Loop through trial data files to clean them up
     trial_data_cell = cell(1,length(filenames));
     for filenum = 1:length(filenames)
         %% load and preprocess data
-        td = load(fullfile(dataroot,'td-library',[filenames{filenum}]));
+        td = load(fullfile(dataroot,'limblab','s1-adapt','td-library',[filenames{filenum}]));
     
         % rename trial_data for ease
         td = td.trial_data;
@@ -217,7 +218,7 @@
             hold on
         end
         axis equal
-        title 'Adaptation'
+        title 'Washout'
         subplot(3,3,6)
         for trialnum = getTDidx(td,'epoch','WO','rand',num_trials_to_plot,'range',[0.3 0.8])
             plot(td(trialnum).pos(:,1),td(trialnum).pos(:,2),'k','linewidth',0.5)
@@ -289,13 +290,83 @@
             %     'combined_params',{{{1},{2,[1 2]},{3,[1 3],[2 3],[1 2 3]}}},...
             %     'marg_colors',marg_colors(1:3,:),...
             %     'do_plot',true,'num_dims',10));
-            td_dpca = runDPCA(td_dpca,'tgt_dir_block',learning_blocks,struct(...
+            [td_dpca, dpca_info] = runDPCA(td_dpca,'tgt_dir_block',learning_blocks,struct(...
                 'signals',spikes_in_td(arraynum),...
                 'do_plot',true,'num_dims',10));
 %             saveas(gcf,sprintf('%s_%s_%s_dPCA.pdf',td(1).monkey,strrep(td(1).date_time,'/','-'),spikes_in_td{arraynum}))
         end
     end
     
+%% Calculate variance due to learning using bootstrapping over trials
+    margvar_cell = cell(length(trial_data_cell));
+    for filenum = 1:length(trial_data_cell)
+        %% load and preprocess data
+        td = trial_data_cell{filenum};
+
+        % trim from go cue to end time (skip bump)
+        spikes_in_td = getTDfields(td,'spikes');
+        td = smoothSignals(td,struct('signals',{spikes_in_td}));
+        if td(1).bin_size == 0.005
+            td = binTD(td,2);
+        end
+        td = trimTD(td,struct(...
+            'idx_start',{{'idx_movement_on',-10}},...
+            'idx_end',{{'idx_movement_on',50}},...
+            'remove_short',true));
+    
+        % assign target direction blocks
+        tgt_dirs = cat(2,td.tgtDir);
+        unique_tgt_dirs = unique(tgt_dirs);
+        % assume 16 targets and reassign to one of 4
+        switch length(unique_tgt_dirs)
+            case 16
+                tgt_block_assign = reshape(repmat([1 2 3 4],4,1),1,16);
+            case 8
+                tgt_block_assign = reshape(repmat([1 2 3 4],2,1),1,8);
+            case 4
+                tgt_block_assign = [1 2 3 4];
+        end
+        for dirnum = 1:length(unique_tgt_dirs)
+            trial_idx = getTDidx(td,'tgtDir',unique_tgt_dirs(dirnum));
+            [td(trial_idx).tgt_dir_block] = deal(tgt_block_assign(dirnum));
+        end
+
+        bl_idx = getTDidx(td,'epoch','BL');
+        ad_idx = getTDidx(td,'epoch','AD');
+        wo_idx = getTDidx(td,'epoch','WO');
+
+        td_dpca = td;
+
+        % get dPCA conditions
+        learning_blocks = {...
+            getTDidx(td_dpca,'epoch','AD','range',[0 0.2]),...
+            getTDidx(td_dpca,'epoch','AD','range',[0.2 0.5]),...
+            getTDidx(td_dpca,'epoch','AD','range',[0.5 1]),...
+            };
+
+        % get actual bootstrapped dPCA
+        margvar_array = cell(length(spikes_in_td),1);
+        marg_colors = [150 150 150; 23 100 171; 187 20 25; 114 97 171]/256; % grey, blue, red, purple
+        for arraynum = 1:length(spikes_in_td)
+            % td_dpca = runDPCA(td_dpca,'tgt_dir_block',learning_blocks,struct(...
+            %     'signals',spikes_in_td(arraynum),...
+            %     'marg_names',{{'time','direction','learning'}},...
+            %     'combined_params',{{{1},{2,[1 2]},{3,[1 3],[2 3],[1 2 3]}}},...
+            %     'marg_colors',marg_colors(1:3,:),...
+            %     'do_plot',true,'num_dims',10));
+            [td_dpca, dpca_info] = runDPCA(td_dpca,'tgt_dir_block',learning_blocks,struct(...
+                'signals',spikes_in_td(arraynum),...
+                'do_plot',false,'num_dims',10));
+            
+            margvar = dpca_info.expl_var.totalMarginalizedVar/dpca_info.expl_var.totalVar;
+            margvar_array{arraynum} = table(...
+                {td_dpca(1).monkey},{td_dpca(1).date_time},spikes_in_td(arraynum),margvar,...
+                'VariableNames',{'monkey','date_time','array','margvar'});
+        end
+        margvar_cell{filenum} = vertcat(margvar_array{:});
+    end
+    margvar_table = vertcat(margvar_cell{:});
+
 %% Try to decode what phase of adaptation we are in using LDA
     num_repeats = 20;
     num_folds = 5;
