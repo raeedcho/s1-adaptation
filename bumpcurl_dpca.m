@@ -236,10 +236,12 @@
 %% Calculate variance due to learning using bootstrapping over trials
     margvar_cell = cell(length(trial_data_cell));
     num_boots = 1;
+    num_dims = 15;
     filetic = tic;
     do_dpca_plot = (num_boots==1);
     trim_start = -0.1;
     trim_end = 0.5;
+    comp_to_plot = 'target';
     for filenum = 1:length(trial_data_cell)
         % load and preprocess data
         td = trial_data_cell{filenum};
@@ -274,7 +276,7 @@
         end
         for dirnum = 1:length(unique_tgt_dirs)
             trial_idx = getTDidx(td,'tgtDir',unique_tgt_dirs(dirnum));
-            [td(trial_idx).tgt_dir_block] = deal(tgt_block_assign(dirnum));
+            [td(trial_idx).target_block] = deal(tgt_block_assign(dirnum));
         end
 
         % get learning block
@@ -319,32 +321,44 @@
                 %     'marg_names',{{'learning','other'}},...
                 %     'combined_params',{{{3,[1 3],[2 3],[1 2 3]},{1,2,[1 2]}}},...
                 %     'do_plot',do_dpca_plot,'num_dims',10));
-                [td_boot, dpca_info] = runDPCA(td_boot,'tgt_dir_block','learning_block',struct(...
+                [td_boot, dpca_info] = runDPCA(td_boot,'target_block','learning_block',struct(...
                     'signals',spikes_in_td(arraynum),...
                     'marg_names',{{'time','target','learning','target_learning'}},...
-                    'do_plot',false,'num_dims',10,'out_sig_prefix',strcat(spikes_in_td{arraynum},'_','dpca')));
+                    'do_plot',false,'num_dims',num_dims,'out_sig_prefix',strcat(spikes_in_td{arraynum},'_','dpca')));
                 
-                if do_dpca_plot && isfield(td_boot,sprintf('%s_dpca_learning',spikes_in_td{arraynum}))
-                    learning_colors = linspecer(3);
+                if do_dpca_plot && isfield(td_boot,sprintf('%s_dpca_%s',spikes_in_td{arraynum},comp_to_plot))
+                    num_blocks = length(unique([td_boot.(sprintf('%s_block',comp_to_plot))]));
+                    block_colors = linspecer(num_blocks);
                     figure
-                    for blocknum = unique([td_boot.learning_block])
+                    for blocknum = unique([td_boot.(sprintf('%s_block',comp_to_plot))])
                         % plot(td_boot(trialnum).(sprintf('%s_dpca_learning',spikes_in_td{arraynum}))(:,1),'color',learning_colors(td_boot(trialnum).learning_block,:))
                         
+%                         plot_traces(td_boot,struct(...
+%                             'signals',{{'timevec',1;sprintf('%s_dpca_learning',spikes_in_td{arraynum}),1}},...
+%                             'plot_dim',2,...
+%                             'linestyle','-',...
+%                             'color',learning_colors(blocknum,:),...
+%                             'saturation',1,...
+%                             'alpha',0.6,...
+%                             'trials_to_use',getTDidx(td_boot,'learning_block',blocknum),...
+%                             'trials_to_plot',getTDidx(td_boot,'learning_block',blocknum,'rand',20)))
                         plot_traces(td_boot,struct(...
-                            'signals',{{'timevec',1;sprintf('%s_dpca_learning',spikes_in_td{arraynum}),1}},...
+                            'signals',{{sprintf('%s_dpca_%s',spikes_in_td{arraynum},comp_to_plot),1:2}},...
                             'plot_dim',2,...
                             'linestyle','-',...
-                            'color',learning_colors(blocknum,:),...
+                            'color',block_colors(blocknum,:),...
                             'saturation',1,...
-                            'alpha',0.6,...
-                            'trials_to_use',getTDidx(td_boot,'learning_block',blocknum),...
-                            'trials_to_plot',getTDidx(td_boot,'learning_block',blocknum,'rand',20)))
+                            'alpha',0.2,...
+                            'trials_to_use',getTDidx(td_boot,sprintf('%s_block',comp_to_plot),blocknum),...
+                            'trials_to_plot',getTDidx(td_boot,sprintf('%s_block',comp_to_plot),blocknum,'rand',20)))
                         
                         hold on
                     end
-                    xlabel('Time from movement onset (s)')
-                    ylabel('Normalized FR?')
-                    title(sprintf('%s %s projection into first learning dim',td_boot(1).monkey,strrep(spikes_in_td{arraynum},'_spikes','')))
+%                     xlabel('Time from movement onset (s)')
+%                     ylabel('Normalized FR?')
+                    xlabel(sprintf('%s dim 1',comp_to_plot))
+                    ylabel(sprintf('%s dim 2',comp_to_plot))
+                    title(sprintf('%s %s projection into %s dims',td_boot(1).monkey,strrep(spikes_in_td{arraynum},'_spikes',''),comp_to_plot))
                     set(gca,'box','off','tickdir','out')
                 end
 
@@ -361,10 +375,10 @@
     margvar_table = vertcat(margvar_cell{:});
     
 %% plot on learning axis (scratchpad)
-    learning_colors = linspecer(3);
+    block_colors = linspecer(3);
     figure
     for trialnum = 1:length(td_boot)
-        plot(td_boot(trialnum).PMd_spikes_dpca_learning(:,1),'color',learning_colors(td_boot(trialnum).learning_block,:))
+        plot(td_boot(trialnum).PMd_spikes_dpca_learning(:,1),'color',block_colors(td_boot(trialnum).learning_block,:))
         hold on
     end
 
