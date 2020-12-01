@@ -132,6 +132,49 @@ function trial_data_cell = load_curl_data(filenames)
             'min_fr',1,...
             'fr_window',{{'idx_movement_on',0;'idx_movement_on',11}},...
             'calc_fr',true));
+        
+        % assign target direction blocks
+        tgt_dirs = cat(2,td.tgtDir);
+        unique_tgt_dirs = sort(unique(tgt_dirs));
+        if any(unique_tgt_dirs)>4
+            % we have degrees instead of rad
+            for trialnum = 1:length(td)
+                td(trialnum).tgtDir = td(trialnum).tgtDir*pi/180;
+            end
+        end
+        
+        % assign targets to blocks for cardinal directions
+        tgt_block_assign = [0 pi/2 pi 3*pi/2];
+        for trialnum = 1:length(td)
+            block_dist = angleDiff(td(trialnum).tgtDir,tgt_block_assign);
+            [~,blocknum] = min(abs(block_dist));
+            td(trialnum).target_block = tgt_block_assign(blocknum);
+        end
+%         switch length(unique_tgt_dirs)
+%             case 16
+%                 tgt_block_assign = reshape(repmat([1 2 3 4],4,1),1,16);
+%             case 8
+%                 tgt_block_assign = reshape(repmat([1 2 3 4],2,1),1,8);
+%             case 4
+%                 tgt_block_assign = [1 2 3 4];
+%         end
+%         for dirnum = 1:length(unique_tgt_dirs)
+%             trial_idx = getTDidx(td,'tgtDir',unique_tgt_dirs(dirnum));
+%             [td(trial_idx).target_block] = deal(tgt_block_assign(dirnum));
+%         end
+        
+        % add learning metric to trial_data
+        bin_size = td(1).bin_size;
+        td_temp = smoothSignals(td,struct('signals','vel','width',0.1));
+        metric = getLearningMetrics(td_temp,struct(...
+            'which_metric','angle',...
+            'use_bl_ref',true,...
+            'fit_bl_ref_curve',false,...
+            'vel_or_pos','vel',...
+            'target_dir_fieldname','tgtDir',...
+            'time_window',{{'idx_movement_on',floor(-0.02/bin_size);'idx_movement_on',floor(0.1/bin_size)}}));
+        metric_cell = num2cell(metric);
+        [td.learning_metric] = deal(metric_cell{:});
     
         trial_data_cell{filenum} = td;
     end

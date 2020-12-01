@@ -1,6 +1,7 @@
+function bumpcurl_dpca
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% bumpcurl_analysis - 
-%%      script to run bumpcurl task analyses
+%% bumpcurl_dpca - 
+%%      function to run bumpcurl dpca analyses
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% Set up meta info
@@ -18,99 +19,20 @@
     trial_data_cell = load_curl_data(fullfile(dataroot,'limblab','s1-adapt','td-library',filenames));
 
 %% Plot trial info (hand speed and example rasters)
-    for filenum = 1:length(trial_data_cell)
-        % load and preprocess data
-        td = trial_data_cell{filenum};
-
-        % trim from go cue to end time (skip bump)
-        td = trimTD(td,{'idx_goCueTime',0},{'idx_endTime',0});
-    
-        bl_idx = getTDidx(td,'epoch','BL');
-        ad_idx = getTDidx(td,'epoch','AD');
-        wo_idx = getTDidx(td,'epoch','WO');
-        
-        metric = getLearningMetrics(td,struct(...
-            'which_metric','angle',...
-            'use_bl_ref',true,...
-            'fit_bl_ref_curve',false,...
-            'vel_or_pos','pos',...
-            'target_dir_fieldname','tgtDir',...
-            'time_window',{{'idx_movement_on',0;'idx_movement_on',40}}));
-
-        % plot metrics
-        smoothing_window_size = 5;
-        figure('defaultaxesfontsize',18)
-        plot(conv(metric,ones(1,smoothing_window_size)/smoothing_window_size,'same'),'k-')
-        hold on
-        plot(repmat(ad_idx(1),2,1),[-1 1],'k--','linewidth',3)
-        plot(repmat(wo_idx(1),2,1),[-1 1],'k--','linewidth',3)
-        plot([0 wo_idx(end)],[0 0],'k-','linewidth',2)
-
-        % plot trials
-        figure('defaultaxesfontsize',18)
-        num_trials_to_plot = 60;
-        % baseline
-        subplot(3,3,4)
-        for trialnum = getTDidx(td,'epoch','BL','rand',num_trials_to_plot)
-            plot(td(trialnum).pos(:,1),td(trialnum).pos(:,2),'k','linewidth',0.5)
-            hold on
-        end
-        axis equal
-        title 'Baseline'
-
-        % adaptation
-        subplot(3,3,2)
-        for trialnum = getTDidx(td,'epoch','AD','rand',num_trials_to_plot,'range',[0 0.3])
-            plot(td(trialnum).pos(:,1),td(trialnum).pos(:,2),'k','linewidth',0.5)
-            hold on
-        end
-        axis equal
-        title 'Adaptation'
-        subplot(3,3,5)
-        for trialnum = getTDidx(td,'epoch','AD','rand',num_trials_to_plot,'range',[0.3 0.8])
-            plot(td(trialnum).pos(:,1),td(trialnum).pos(:,2),'k','linewidth',0.5)
-            hold on
-        end
-        axis equal
-        subplot(3,3,8)
-        for trialnum = getTDidx(td,'epoch','AD','rand',num_trials_to_plot,'range',[0.8 1])
-            plot(td(trialnum).pos(:,1),td(trialnum).pos(:,2),'k','linewidth',0.5)
-            hold on
-        end
-        axis equal
-
-        % washout
-        subplot(3,3,3)
-        for trialnum = getTDidx(td,'epoch','WO','rand',num_trials_to_plot,'range',[0 0.3])
-            plot(td(trialnum).pos(:,1),td(trialnum).pos(:,2),'k','linewidth',0.5)
-            hold on
-        end
-        axis equal
-        title 'Washout'
-        subplot(3,3,6)
-        for trialnum = getTDidx(td,'epoch','WO','rand',num_trials_to_plot,'range',[0.3 0.8])
-            plot(td(trialnum).pos(:,1),td(trialnum).pos(:,2),'k','linewidth',0.5)
-            hold on
-        end
-        axis equal
-        subplot(3,3,9)
-        for trialnum = getTDidx(td,'epoch','WO','rand',num_trials_to_plot,'range',[0.8 1])
-            plot(td(trialnum).pos(:,1),td(trialnum).pos(:,2),'k','linewidth',0.5)
-            hold on
-        end
-        axis equal
-    end
+    plot_learning_behavior(trial_data_cell);
     
 %% Calculate variance due to learning using bootstrapping over trials
     margvar_cell = cell(length(trial_data_cell));
     num_boots = 1;
-    num_dims = 15;
+    num_dims = 16;
     filetic = tic;
     do_dpca_plot = (num_boots==1);
     trim_start = -0.1;
     trim_end = 0.5;
     comp_to_plot = 'learning';
-    for filenum = 1:length(trial_data_cell)
+    learning_block_ranges = 0:0.1:1;
+    colorfunc = @viridis;
+    for filenum = [1 2 3 4 6 7]%1:length(trial_data_cell)
         % load and preprocess data
         td = trial_data_cell{filenum};
 
@@ -129,32 +51,35 @@
         for trialnum = 1:length(td)
             td(trialnum).timevec = timevec';
         end
-    
-        % assign target direction blocks
-        tgt_dirs = cat(2,td.tgtDir);
-        unique_tgt_dirs = unique(tgt_dirs);
-        % assume 16 targets and reassign to one of 4
-        switch length(unique_tgt_dirs)
-            case 16
-                tgt_block_assign = reshape(repmat([1 2 3 4],4,1),1,16);
-            case 8
-                tgt_block_assign = reshape(repmat([1 2 3 4],2,1),1,8);
-            case 4
-                tgt_block_assign = [1 2 3 4];
-        end
-        for dirnum = 1:length(unique_tgt_dirs)
-            trial_idx = getTDidx(td,'tgtDir',unique_tgt_dirs(dirnum));
-            [td(trial_idx).target_block] = deal(tgt_block_assign(dirnum));
-        end
 
         % get learning block
-        learning_blocks = {...
-            getTDidx(td,'epoch','AD','range',[0 0.25]),...
-            getTDidx(td,'epoch','AD','range',[0.25 0.50]),...
-            getTDidx(td,'epoch','AD','range',[0.50 1]),...
-            };
-        
+%         learning_blocks = {...
+%             getTDidx(td,'epoch','AD','range',[0 0.15]),...
+%             getTDidx(td,'epoch','AD','range',[0.15 0.45]),...
+%             getTDidx(td,'epoch','AD','range',[0.45 1]),...
+%             };
+%         learning_blocks = {...
+%             getTDidx(td,'epoch','AD','range',[0 0.10]),...
+%             getTDidx(td,'epoch','AD','range',[0.10 0.20]),...
+%             getTDidx(td,'epoch','AD','range',[0.20 0.30]),...
+%             getTDidx(td,'epoch','AD','range',[0.30 0.40]),...
+%             getTDidx(td,'epoch','AD','range',[0.40 0.50]),...
+%             getTDidx(td,'epoch','AD','range',[0.50 0.60]),...
+%             getTDidx(td,'epoch','AD','range',[0.60 0.70]),...
+%             getTDidx(td,'epoch','AD','range',[0.70 0.80]),...
+%             getTDidx(td,'epoch','AD','range',[0.80 0.90]),...
+%             getTDidx(td,'epoch','AD','range',[0.90 1]),...
+%             };
+%         learning_blocks = {...
+%             getTDidx(td,'epoch','AD','range',[0 0.20]),...
+%             getTDidx(td,'epoch','AD','range',[0.20 0.40]),...
+%             getTDidx(td,'epoch','AD','range',[0.40 0.60]),...
+%             getTDidx(td,'epoch','AD','range',[0.60 0.80]),...
+%             getTDidx(td,'epoch','AD','range',[0.80 1]),...
+%             };
+        learning_blocks = cell(1,length(learning_block_ranges)-1);
         for blocknum = 1:length(learning_blocks)
+            learning_blocks{blocknum} = getTDidx(td,'epoch','AD','range',learning_block_ranges([blocknum blocknum+1]));
             [td(learning_blocks{blocknum}).learning_block] = deal(blocknum);
         end
         
@@ -196,8 +121,15 @@
                 
                 if do_dpca_plot && isfield(td_boot,sprintf('%s_dpca_%s',spikes_in_td{arraynum},comp_to_plot))
                     num_blocks = length(unique([td_boot.(sprintf('%s_block',comp_to_plot))]));
-                    block_colors = linspecer(num_blocks);
+                    block_colors = colorfunc(num_blocks);
                     figure
+                    
+                    % plot one time point per trial in dPC space
+                    td_avg = binTD(td_boot,'average');
+                    data = get_vars(td_avg,{sprintf('%s_dpca_%s',spikes_in_td{arraynum},comp_to_plot),1:2});
+                    scatter(data(:,1),data(:,2),[],colorfunc(length(data)),'filled')
+                    hold on
+                    
                     for blocknum = unique([td_boot.(sprintf('%s_block',comp_to_plot))])
                         % plot(td_boot(trialnum).(sprintf('%s_dpca_learning',spikes_in_td{arraynum}))(:,1),'color',learning_colors(td_boot(trialnum).learning_block,:))
                         
@@ -219,13 +151,14 @@
 %                             'alpha',0.2,...
 %                             'trials_to_use',getTDidx(td_boot,sprintf('%s_block',comp_to_plot),blocknum),...
 %                             'trials_to_plot',getTDidx(td_boot,sprintf('%s_block',comp_to_plot),blocknum,'rand',20)))
+                        [~,td_block] = getTDidx(td_boot,sprintf('%s_block',comp_to_plot),blocknum);
+                        td_block = binTD(td_block,'average');
                         
                         data = get_vars(...
-                            td_boot(getTDidx(td_boot,sprintf('%s_block',comp_to_plot),blocknum)),...
+                            td_block,...
                             {sprintf('%s_dpca_%s',spikes_in_td{arraynum},comp_to_plot),1:2});
-                        scatter(data(:,1),data(:,2),[],block_colors(blocknum,:),'filled','markerfacealpha',0.1)
-                        
-                        hold on
+%                         scatter(data(:,1),data(:,2),[],block_colors(blocknum,:),'filled','markerfacealpha',0.5)
+%                         hold on
                         
                         plotErrorEllipse(mean(data,1),cov(data),0.95,'color',block_colors(blocknum,:),'linewidth',2)
                     end
@@ -249,122 +182,86 @@
     end
     margvar_table = vertcat(margvar_cell{:});
     
-%% plot on learning axis (scratchpad)
-    block_colors = linspecer(3);
-    figure
-    for trialnum = 1:length(td_boot)
-        plot(td_boot(trialnum).PMd_spikes_dpca_learning(:,1),'color',block_colors(td_boot(trialnum).learning_block,:))
-        hold on
-    end
+end
 
-%% Try to decode what phase of adaptation we are in using LDA
-    num_repeats = 20;
-    num_folds = 5;
-    file_results = cell(length(trial_data_cell),1);
-    fprintf('Starting LDA classification analysis...\n')
-    filetic = tic;
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function plot_learning_behavior(trial_data_cell)
     for filenum = 1:length(trial_data_cell)
-        %% load and preprocess
+        % load and preprocess data
         td = trial_data_cell{filenum};
-        
+
         % trim from go cue to end time (skip bump)
-        spikes_in_td = getTDfields(td,'spikes');
-        td = smoothSignals(td,struct('signals',{spikes_in_td}));
-        if td(1).bin_size == 0.005
-            td = binTD(td,2);
-        end
-        td = trimTD(td,struct(...
-            'idx_start',{{'idx_movement_on',-10}},...
-            'idx_end',{{'idx_movement_on',50}},...
-            'remove_short',true));
-        
-        %% run LDA on individual time points
-        % get learning conditions
-        [~,td_ad] = getTDidx(td,'epoch','AD','range',[0 0.75]);
-        learning_blocks = {...
-            getTDidx(td_ad,'range',[0 0.33]),...
-            getTDidx(td_ad,'range',[0.33 0.67]),...
-            getTDidx(td_ad,'range',[0.67 1]),...
-            };
-        for blocknum = 1:length(learning_blocks)
-            [td_ad(learning_blocks{blocknum}).learning_block] = deal(blocknum);
-        end
-        
-        acc_table = cell(length(spikes_in_td),num_repeats,num_folds);
-        arraytic = tic;
-        for arraynum = 1:length(spikes_in_td)
-            % make meta table columns
-            meta_table = makeNeuronTableStarter(td_ad,struct('out_signal_names',{spikes_in_td(arraynum)}));
-            
-            % crossvalidate...
-            repeattic = tic;
-            for repeatnum = 1:num_repeats
-                fold_inds = crossvalind('Kfold',length(td_ad),num_folds);
-                foldtic = tic;
-                for foldnum = 1:num_folds
-                    td_test = td_ad(fold_inds==foldnum);
-                    td_train = td_ad(fold_inds~=foldnum);
-                    
-                    fr_train = cat(3,td_train.(spikes_in_td{arraynum}));
-                    fr_train = permute(fr_train,[3 2 1]);
-                    class_train = cat(1,td_train.learning_block);
-                    
-                    fr_test = cat(3,td_test.(spikes_in_td{arraynum}));
-                    fr_test = permute(fr_test,[3 2 1]);
-                    class_test = cat(1,td_test.learning_block);
-                    
-                    % train and test lda
-                    acc = zeros(1,size(fr_train,3));
-                    for timepoint = 1:size(fr_train,3)
-                        mdl = fitcdiscr(fr_train(:,:,timepoint),class_train,'discrimtype','pseudolinear');
-                        preds = predict(mdl,fr_test(:,:,timepoint));
-                        acc(timepoint) = sum(preds==class_test)/length(class_test);
-                    end
-                    
-                    % put results into table
-                    temp = table(repeatnum,foldnum,acc,'VariableNames',{'repeatID','foldID','class_accuracy'});
-                    temp.Properties.VariableDescriptions = {'meta','meta','linear'};
-                    acc_table{arraynum,repeatnum,foldnum} = horzcat(meta_table,temp);
-                    % fprintf('      Finished crossval fold %d of %d at time %f\n',foldnum,num_folds,toc(foldtic))
-                end
-                fprintf('    Finished crossval repeat %d of %d at time %f\n',repeatnum,num_repeats,toc(repeattic))
-            end
-            fprintf('  Finished array %d of %d at time %f\n',arraynum,length(spikes_in_td),toc(arraytic))
-        end
-        file_results{filenum} = vertcat(acc_table{:});
-        fprintf('Finished file %d at time %f\n',filenum,toc(filetic))
-    end
-    lda_class_acc = vertcat(file_results{:});
+        td = trimTD(td,{'idx_goCueTime',0},{'idx_endTime',0});
     
-    %% average lda class accuracy at different time points of learning
-    avg_class_table = neuronAverage(lda_class_acc,struct(...
-        'keycols',{{'monkey','date','signalID'}},...
-        'do_ci',true));
-    timevec = (-10:50)*0.01;
-    figure('defaultaxesfontsize',10)
-    
-    for arraynum = 1:height(avg_class_table)
-        switch avg_class_table.signalID{arraynum}
-            case 'M1_spikes'
-                color = [102,194,165]/255;
-            case 'PMd_spikes'
-                color = [252,141,98]/255;
-            case 'S1_spikes'
-                color = [141,160,203]/255;
-            otherwise
-                color = 'k';
-        end
-%         patch(...
-%             [timevec fliplr(timevec)],...
-%             [avg_class_table.class_accuracyCILo(arraynum,:) fliplr(avg_class_table.class_accuracyCIHi(arraynum,:))],...
-%             color,'facealpha',0.1,'edgecolor',color)
+        bl_idx = getTDidx(td,'epoch','BL');
+        ad_idx = getTDidx(td,'epoch','AD');
+        wo_idx = getTDidx(td,'epoch','WO');
+        
+        metric = cat(1,td.learning_metric);
+
+        % plot metrics
+        smoothing_window_size = 5;
+        figure('defaultaxesfontsize',18)
+        plot(conv(metric,ones(1,smoothing_window_size)/smoothing_window_size,'same'),'k-')
         hold on
-        plot(timevec,avg_class_table.class_accuracy(arraynum,:),'linewidth',2,'color',color)
+        plot(repmat(ad_idx(1),2,1),[-1 1],'k--','linewidth',3)
+        plot(repmat(wo_idx(1),2,1),[-1 1],'k--','linewidth',3)
+        plot([0 wo_idx(end)],[0 0],'k-','linewidth',2)
+        title(sprintf('%s %s',td(1).monkey,td(1).date_time))
+
+        % plot trials
+%         figure('defaultaxesfontsize',18)
+%         num_trials_to_plot = 60;
+%         % baseline
+%         subplot(3,3,4)
+%         for trialnum = getTDidx(td,'epoch','BL','rand',num_trials_to_plot)
+%             plot(td(trialnum).pos(:,1),td(trialnum).pos(:,2),'k','linewidth',0.5)
+%             hold on
+%         end
+%         axis equal
+%         title 'Baseline'
+% 
+%         % adaptation
+%         subplot(3,3,2)
+%         for trialnum = getTDidx(td,'epoch','AD','rand',num_trials_to_plot,'range',[0 0.3])
+%             plot(td(trialnum).pos(:,1),td(trialnum).pos(:,2),'k','linewidth',0.5)
+%             hold on
+%         end
+%         axis equal
+%         title 'Adaptation'
+%         subplot(3,3,5)
+%         for trialnum = getTDidx(td,'epoch','AD','rand',num_trials_to_plot,'range',[0.3 0.8])
+%             plot(td(trialnum).pos(:,1),td(trialnum).pos(:,2),'k','linewidth',0.5)
+%             hold on
+%         end
+%         axis equal
+%         subplot(3,3,8)
+%         for trialnum = getTDidx(td,'epoch','AD','rand',num_trials_to_plot,'range',[0.8 1])
+%             plot(td(trialnum).pos(:,1),td(trialnum).pos(:,2),'k','linewidth',0.5)
+%             hold on
+%         end
+%         axis equal
+% 
+%         % washout
+%         subplot(3,3,3)
+%         for trialnum = getTDidx(td,'epoch','WO','rand',num_trials_to_plot,'range',[0 0.3])
+%             plot(td(trialnum).pos(:,1),td(trialnum).pos(:,2),'k','linewidth',0.5)
+%             hold on
+%         end
+%         axis equal
+%         title 'Washout'
+%         subplot(3,3,6)
+%         for trialnum = getTDidx(td,'epoch','WO','rand',num_trials_to_plot,'range',[0.3 0.8])
+%             plot(td(trialnum).pos(:,1),td(trialnum).pos(:,2),'k','linewidth',0.5)
+%             hold on
+%         end
+%         axis equal
+%         subplot(3,3,9)
+%         for trialnum = getTDidx(td,'epoch','WO','rand',num_trials_to_plot,'range',[0.8 1])
+%             plot(td(trialnum).pos(:,1),td(trialnum).pos(:,2),'k','linewidth',0.5)
+%             hold on
+%         end
+%         axis equal
     end
-    plot([timevec(1) timevec(end)],[0.33 0.33],'--k')
-    xlabel('Time from movement onset')
-    ylabel('Classification accuracy (among 3 classes)')
-    
-    set(gca,'box','off','tickdir','out')
-    legend(strcat(avg_class_table.monkey,{'_'},avg_class_table.signalID))
+end
 
