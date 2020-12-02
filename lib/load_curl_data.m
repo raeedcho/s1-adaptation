@@ -136,7 +136,7 @@ function trial_data_cell = load_curl_data(filenames)
         % assign target direction blocks
         tgt_dirs = cat(2,td.tgtDir);
         unique_tgt_dirs = sort(unique(tgt_dirs));
-        if any(unique_tgt_dirs)>4
+        if any(unique_tgt_dirs>4)
             % we have degrees instead of rad
             for trialnum = 1:length(td)
                 td(trialnum).tgtDir = td(trialnum).tgtDir*pi/180;
