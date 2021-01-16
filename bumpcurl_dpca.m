@@ -23,8 +23,23 @@ function bumpcurl_dpca
     plot_learning_behavior(trial_data_cell);
     
 %% Calculate variance due to learning using bootstrapping over trials
-    dpca_results = get_dpca_var(trial_data_cell([1 2 3 4 6 7]));
+    [margvar_table,learning_metric_table] = get_dpca_var(trial_data_cell([1 2 3 4 6 7]));
     
+%% compare learning metric with dPC movement
+    arrays = {'PMd_spikes','M1_spikes','S1_spikes'};
+    for arraynum = 1:length(arrays)
+        [~,array_metric_table] = getNTidx(learning_metric_table,'array',arrays{arraynum});
+        sessions = unique(array_metric_table.date_time);
+        session_colors = linspecer(length(sessions));
+        figure
+        for sessionnum = 1:length(sessions)
+            [~,session_table] = getNTidx(array_metric_table,'date_time',sessions{sessionnum});
+            hold on
+            scatter(session_table.rel_learning_metric,session_table.learning_dPC_dist_norm,[],session_colors(sessionnum,:),'filled')
+        end
+        set(gca,'box','off','tickdir','out','ylim',[0 0.75],'xlim',[-0.35 0.35])
+        title(arrays{arraynum})
+    end
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -108,11 +123,11 @@ function plot_learning_behavior(trial_data_cell)
     end
 end
 
-function margvar_table = get_dpca_var(trial_data_cell,params)
+function [margvar_table,learning_metric_table] = get_dpca_var(trial_data_cell,params)
     % helper function to get table of dPCA results
 
     % set up params
-    margvar_cell = cell(length(trial_data_cell));
+    [margvar_cell,learning_metric_cell] = deal(cell(length(trial_data_cell)));
     num_boots = 1;
     num_dims = 16;
     filetic = tic;
@@ -158,6 +173,7 @@ function margvar_table = get_dpca_var(trial_data_cell,params)
 
         % get actual bootstrapped dPCA
         margvar_array = cell(length(spikes_in_td),num_boots);
+        learning_metric_array = cell(length(spikes_in_td),num_boots,length(learning_blocks));
         for arraynum = 1:length(spikes_in_td)
             for bootnum = 1:num_boots
                 % inds to use in bootstrap
@@ -167,18 +183,66 @@ function margvar_table = get_dpca_var(trial_data_cell,params)
                     td_boot = randsample(td_dpca,length(td_dpca),true);
                 end
                 
+                % get total neural covariance to start with
+                data = getSig(td_boot,spikes_in_td(arraynum));
+                neural_cov = cov(data);
+                
                 % get dPCA results for this bootstrap iteration
                 [td_boot, dpca_info] = runDPCA(td_boot,'target_block','learning_block',struct(...
                     'signals',spikes_in_td(arraynum),...
                     'marg_names',{{'time','target','learning','target_learning'}},...
                     'do_plot',false,'num_dims',num_dims,'out_sig_prefix',strcat(spikes_in_td{arraynum},'_','dpca')));
 
-                margvar = dpca_info.expl_var.totalMarginalizedVar/dpca_info.expl_var.totalVar;
+                % set up margvar table
                 margvar_array{arraynum,bootnum} = table(...
-                    {td_boot(1).monkey},{td_boot(1).date_time},spikes_in_td(arraynum),bootnum,dpca_info.marg_names,margvar,...
-                    'VariableNames',{'monkey','date_time','array','bootID','marg_names','margvar'});
+                    {td_boot(1).monkey},...
+                    {td_boot(1).date_time},...
+                    spikes_in_td(arraynum),...
+                    bootnum,...
+                    dpca_info.marg_names,...
+                    dpca_info.expl_var.totalMarginalizedVar,...
+                    'VariableNames',{'monkey','date_time','array','bootID','marg_names','marg_var'});
                 margvar_array{arraynum,bootnum}.Properties.VariableDescriptions = {'meta','meta','meta','meta','meta','linear'};
                 
+                % set up learning metric table
+                if isfield(td_boot,sprintf('%s_dpca_learning',spikes_in_td{arraynum}))
+                    [~,td_block] = getTDidx(td_boot,'learning_block',length(learning_blocks));
+                    td_block = binTD(td_block,'average');
+                    
+                    learning_metric_end = mean(cat(1,td_block.learning_metric));
+                    data = get_vars(...
+                            td_block,...
+                            {sprintf('%s_dpca_%s',spikes_in_td{arraynum},comp_to_plot),1:2});
+                    learning_dPC_end = mean(data);
+                    
+                    for blocknum = unique([td_boot.learning_block])
+                        [~,td_block] = getTDidx(td_boot,'learning_block',blocknum);
+                        td_block = binTD(td_block,'average');
+                        block_learning_metric = mean(cat(1,td_block.learning_metric));
+                        
+                        data = get_vars(...
+                            td_block,...
+                            {sprintf('%s_dpca_%s',spikes_in_td{arraynum},comp_to_plot),1:2});
+                        block_learning_dPC = mean(data);
+                        
+                        rel_learning_dPC = block_learning_dPC-learning_dPC_end;
+                        
+                        learning_metric_array{arraynum,bootnum,blocknum} = table(...
+                            {td_block(1).monkey},...
+                            {td_block(1).date_time},...
+                            spikes_in_td(arraynum),...
+                            bootnum,...
+                            blocknum,...
+                            block_learning_metric-learning_metric_end,...
+                            rel_learning_dPC,...
+                            sqrt(sum(rel_learning_dPC.^2,2)),...
+                            sqrt(sum(rel_learning_dPC.^2,2)/trace(neural_cov)),...
+                            'VariableNames',{'monkey','date_time','array','bootID','learning_block','rel_learning_metric','rel_learning_dPC','learning_dPC_dist','learning_dPC_dist_norm'});
+                        learning_metric_array{arraynum,bootnum,blocknum}.Properties.VariableDescriptions = {'meta','meta','meta','meta','meta','linear','linear','linear','linear'};
+                    end
+                end
+                
+                % do a plot of the dPC space
                 if do_dpca_plot && isfield(td_boot,sprintf('%s_dpca_%s',spikes_in_td{arraynum},comp_to_plot))
                     num_blocks = length(unique([td_boot.(sprintf('%s_block',comp_to_plot))]));
                     block_colors = colorfunc(num_blocks);
@@ -209,6 +273,8 @@ function margvar_table = get_dpca_var(trial_data_cell,params)
             end
         end
         margvar_cell{filenum} = vertcat(margvar_array{:});
+        learning_metric_cell{filenum} = vertcat(learning_metric_array{:});
     end
     margvar_table = vertcat(margvar_cell{:});
+    learning_metric_table = vertcat(learning_metric_cell{:});
 end
