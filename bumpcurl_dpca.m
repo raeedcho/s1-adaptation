@@ -23,7 +23,10 @@ function bumpcurl_dpca
     plot_learning_behavior(trial_data_cell);
     
 %% Calculate variance due to learning using bootstrapping over trials
-    [~,learning_metric_table] = get_dpca_var(trial_data_cell([1 2 3 4 6 7]));
+    [margvar_table,learning_metric_table] = get_dpca_var(trial_data_cell([1 2 4:11]),struct(...
+        'num_boots',100,...
+        'do_dpca_plot',false,...
+        'learning_block_ranges',[0 0.33 0.67 1]));
     
 %% compare learning metric with dPC movement
     arrays = {'PMd_spikes','M1_spikes','S1_spikes'};
@@ -38,6 +41,34 @@ function bumpcurl_dpca
             scatter(session_table.rel_learning_metric,session_table.learning_dPC_dist_norm,[],session_colors(sessionnum,:),'filled')
         end
         set(gca,'box','off','tickdir','out','ylim',[0 0.75],'xlim',[-0.35 0.35])
+        title(arrays{arraynum})
+        xlabel('Learning metric diff')
+        ylabel('Norm learning dPC diff')
+    end
+
+%% compare marginalized variance between arrays
+    figure('defaultaxesfontsize',18)
+    arrays = {'PMd_spikes','M1_spikes','S1_spikes'};
+    monkeys = {'Chewie','Mihili','MrT','Duncan','Han'};
+    monkey_colors = linspecer(length(monkeys));
+    for arraynum = 1:length(arrays)
+        [~,array_metric_table] = getNTidx(margvar_table,'array',arrays{arraynum});
+        sessions = unique(array_metric_table.date_time);
+        session_colors = linspecer(length(sessions));
+        for sessionnum = 1:length(sessions)
+            [~,session_table] = getNTidx(array_metric_table,'date_time',sessions{sessionnum});
+            point_color = monkey_colors(strcmpi(session_table.monkey,monkeys),:);
+            hold on
+            scatter(...
+                arraynum+(rand*0.2-0.1),...
+                session_table.marg_var(:,3)/sum(session_table.marg_var,2),...
+                [],point_color,'filled')
+        end
+        set(gca,...
+            'box','off',...
+            'tickdir','out',...
+            'ylim',[0 0.2],'xlim',[0 length(arrays)+1],...
+            'xtick',1:length(arrays),'xticklabel',arrays)
         title(arrays{arraynum})
         xlabel('Learning metric diff')
         ylabel('Norm learning dPC diff')

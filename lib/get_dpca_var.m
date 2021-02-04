@@ -61,6 +61,11 @@ function [margvar_table,learning_metric_table] = get_dpca_var(trial_data_cell,pa
                 % get total neural covariance to start with
                 data = getSig(td_boot,spikes_in_td(arraynum));
                 neural_cov = cov(data);
+
+                % check to make sure there are enough neurons
+                if size(data,2)<=num_dims
+                    break;
+                end
                 
                 % get dPCA results for this bootstrap iteration
                 [td_boot, dpca_info] = runDPCA(td_boot,'target_block','learning_block',struct(...
