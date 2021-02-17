@@ -64,7 +64,7 @@ function bumpcurl_dpca
         ylabel('Norm learning dPC diff')
     end
 
-%% compare marginalized variance between arrays
+%% compare dpca learning total margvar between baseline and adaptation (run marginalization in baseline)
     figure('defaultaxesfontsize',18)
     arrays = {'S1_spikes','PMd_spikes','M1_spikes'};
     % arrays = {'S1_spikes','PMd_spikes'};
@@ -73,11 +73,9 @@ function bumpcurl_dpca
     for arraynum = 1:length(arrays)
         [~,array_metric_table] = getNTidx(margvar_table,'array',arrays{arraynum});
         sessions = unique(array_metric_table.date_time);
-        session_colors = linspecer(length(sessions));
         for sessionnum = 1:length(sessions)
             [~,session_table] = getNTidx(array_metric_table,'date_time',sessions{sessionnum});
             point_color = monkey_colors(strcmpi(session_table.monkey,monkeys),:);
-            rand_jitter = rand*0.2-0.1;
             hold on
             scatter(...
                 arraynum+0.1,...
@@ -110,6 +108,75 @@ function bumpcurl_dpca
         ylabel('% neural variance associated with learning')
         title('learning related variance in area 2 and PMd')
     end
+
+%% compare dPCA learning margvar with baseline projections into adaptation space
+    figure('defaultaxesfontsize',18)
+    arrays = {'S1_spikes','PMd_spikes','M1_spikes'};
+    % arrays = {'S1_spikes','PMd_spikes'};
+    monkeys = {'Chewie','Mihili','MrT','Duncan','Han'};
+    monkey_colors = linspecer(length(monkeys));
+    for arraynum = 1:length(arrays)
+        [~,array_metric_table] = getNTidx(margvar_table,'array',arrays{arraynum});
+        sessions = unique(array_metric_table.date_time);
+        for sessionnum = 1:length(sessions)
+            [~,session_table] = getNTidx(array_metric_table,'date_time',sessions{sessionnum});
+            bl_tab_idx = strncmp(margvar_bl_table.date_time,sessions{sessionnum},10) & ...
+                strcmpi(margvar_bl_table.array,arrays{arraynum});
+            bl_table = margvar_bl_table(bl_tab_idx,:);
+            assert(height(session_table)==1 && height(bl_table)==1) % assume all sessions are on different days
+            point_color = monkey_colors(strcmpi(session_table.monkey,monkeys),:);
+
+            % calculate marg var for adaptation
+            ad_expl_var = dpca_explainedVariance(...
+                session_table.fr_tensor{1},...
+                session_table.decoder{1}, session_table.encoder{1},...
+                'combinedParams', session_table.combined_params);
+            bl_expl_var = dpca_explainedVariance(...
+                bl_table.fr_tensor{1},...
+                session_table.decoder{1}, session_table.encoder{1},...
+                'combinedParams', session_table.combined_params);
+            % bl_expl_var = dpca_explainedVariance(...
+            %     bl_table.fr_tensor{1},...
+            %     bl_table.decoder{1}, bl_table.encoder{1},...
+            %     'combinedParams', bl_table.combined_params);
+
+            for margnum = 1:length(session_table.marg_names)
+                % ad_val = sum(ad_expl_var.margVar(margnum,session_table.which_marg==margnum),2);
+                % bl_val = sum(bl_expl_var.margVar(margnum,session_table.which_marg==margnum),2);
+
+                ad_val = 100*session_table.marg_var(margnum)/sum(session_table.marg_var);
+                bl_val = 100*bl_table.marg_var(margnum)/sum(bl_table.marg_var);
+
+                subplot(1,length(session_table.marg_names),margnum)
+                hold on
+                scatter(...
+                    arraynum+0.1,...
+                    ad_val,...
+                    [],point_color,'filled')
+                scatter(...
+                    arraynum-0.1,...
+                    bl_val,...
+                    [],point_color)
+                plot(...
+                    arraynum+[0.1 -0.1],...
+                    horzcat(ad_val, bl_val),...
+                    '-','color',point_color)
+            end
+        end
+    end
+    for margnum = 1:length(margvar_table(1,:).marg_names)
+        subplot(1,length(margvar_table(1,:).marg_names),margnum)
+        set(gca,...
+            'box','off',...
+            'tickdir','out',...
+            'ylim',[0 100],'xlim',[0 length(arrays)+1],...
+            'xtick',1:length(arrays),'xticklabel',arrays,...
+            'ticklabelinterpreter','none')
+        xlabel('Brain region')
+        ylabel('% of total neural variance')
+        title(margvar_table(1,:).marg_names{margnum})
+    end
+    suptitle('Comparison between variance in (projected) baseline and adaptation')
 
 end
 
