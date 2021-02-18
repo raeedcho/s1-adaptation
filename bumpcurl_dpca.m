@@ -20,22 +20,24 @@ function bumpcurl_dpca
     trial_data_cell = load_curl_data(fullfile(dataroot,'limblab','s1-adapt','td-library',filenames));
 
 %% Plot trial info (hand speed and example rasters)
-    plot_learning_behavior(trial_data_cell);
+    % plot_learning_behavior(trial_data_cell);
     
 %% Calculate variance due to learning using bootstrapping over trials
     [margvar_cell,margvar_bl_cell,learning_metric_cell] = deal(cell(length(trial_data_cell)));
     for filenum = [1:4 6:11]
         td = trial_data_cell{filenum};
         [~,td_ad] = getTDidx(td,'epoch','AD');
+        ad_trial_frac = 0.2;
         [margvar_cell{filenum},learning_metric_cell{filenum}] = get_dpca_var(td_ad,struct(...
             'num_boots',1,...
             'plot_marg',false,...
             'plot_learning_dpcs',false,...
-            'learning_block_ranges',0:0.1:1));
+            'learning_block_ranges',0:ad_trial_frac:1));
 
         % get baseline values for metrics
         [~,td_bl] = getTDidx(td,'epoch','BL');
-        bl_trial_frac = 0.1*length(td_ad)/length(td_bl);
+        % bl_trial_frac = ad_trial_frac*length(td_ad)/length(td_bl);
+        bl_trial_frac = 0.2;
         [margvar_bl_cell{filenum},~] = get_dpca_var(td_bl,struct(...
             'num_boots',1,...
             'plot_marg',false,...
@@ -47,72 +49,26 @@ function bumpcurl_dpca
     learning_metric_table = vertcat(learning_metric_cell{:});
     
 %% compare learning metric with dPC movement
-    arrays = {'PMd_spikes','M1_spikes','S1_spikes'};
-    for arraynum = 1:length(arrays)
-        [~,array_metric_table] = getNTidx(learning_metric_table,'array',arrays{arraynum});
-        sessions = unique(array_metric_table.date_time);
-        session_colors = linspecer(length(sessions));
-        figure('defaultaxesfontsize',18)
-        for sessionnum = 1:length(sessions)
-            [~,session_table] = getNTidx(array_metric_table,'date_time',sessions{sessionnum});
-            hold on
-            scatter(session_table.rel_learning_metric,session_table.learning_dPC_dist_norm,[],session_colors(sessionnum,:),'filled')
-        end
-        set(gca,'box','off','tickdir','out','ylim',[0 0.75],'xlim',[-0.35 0.35])
-        title(arrays{arraynum})
-        xlabel('Learning metric diff')
-        ylabel('Norm learning dPC diff')
-    end
+    % arrays = {'PMd_spikes','M1_spikes','S1_spikes'};
+    % for arraynum = 1:length(arrays)
+    %     [~,array_metric_table] = getNTidx(learning_metric_table,'array',arrays{arraynum});
+    %     sessions = unique(array_metric_table.date_time);
+    %     session_colors = linspecer(length(sessions));
+    %     figure('defaultaxesfontsize',18)
+    %     for sessionnum = 1:length(sessions)
+    %         [~,session_table] = getNTidx(array_metric_table,'date_time',sessions{sessionnum});
+    %         hold on
+    %         scatter(session_table.rel_learning_metric,session_table.learning_dPC_dist_norm,[],session_colors(sessionnum,:),'filled')
+    %     end
+    %     set(gca,'box','off','tickdir','out','ylim',[0 0.75],'xlim',[-0.35 0.35])
+    %     title(arrays{arraynum})
+    %     xlabel('Learning metric diff')
+    %     ylabel('Norm learning dPC diff')
+    % end
 
 %% compare dpca learning total margvar between baseline and adaptation (run marginalization in baseline)
     figure('defaultaxesfontsize',18)
     arrays = {'S1_spikes','PMd_spikes','M1_spikes'};
-    % arrays = {'S1_spikes','PMd_spikes'};
-    monkeys = {'Chewie','Mihili','MrT','Duncan','Han'};
-    monkey_colors = linspecer(length(monkeys));
-    for arraynum = 1:length(arrays)
-        [~,array_metric_table] = getNTidx(margvar_table,'array',arrays{arraynum});
-        sessions = unique(array_metric_table.date_time);
-        for sessionnum = 1:length(sessions)
-            [~,session_table] = getNTidx(array_metric_table,'date_time',sessions{sessionnum});
-            point_color = monkey_colors(strcmpi(session_table.monkey,monkeys),:);
-            hold on
-            scatter(...
-                arraynum+0.1,...
-                100 * session_table.marg_var(:,3)/sum(session_table.marg_var,2),...
-                [],point_color,'filled')
-
-            bl_tab_idx = strncmp(margvar_bl_table.date_time,sessions{sessionnum},10) & ...
-                strcmpi(margvar_bl_table.array,arrays{arraynum});
-            bl_table = margvar_bl_table(bl_tab_idx,:);
-            point_color = monkey_colors(strcmpi(bl_table.monkey,monkeys),:);
-            scatter(...
-                arraynum-0.1,...
-                100 * bl_table.marg_var(:,3)/sum(bl_table.marg_var,2),...
-                [],point_color)
-
-            plot(...
-                arraynum+[0.1 -0.1],...
-                100 * horzcat(...
-                    session_table.marg_var(:,3)/sum(session_table.marg_var,2),...
-                    bl_table.marg_var(:,3)/sum(bl_table.marg_var,2)),...
-                '-','color',point_color)
-        end
-        set(gca,...
-            'box','off',...
-            'tickdir','out',...
-            'ylim',[0 40],'xlim',[0 length(arrays)+1],...
-            'xtick',1:length(arrays),'xticklabel',arrays,...
-            'ticklabelinterpreter','none')
-        xlabel('Brain region')
-        ylabel('% neural variance associated with learning')
-        title('learning related variance in area 2 and PMd')
-    end
-
-%% compare dPCA learning margvar with baseline projections into adaptation space
-    figure('defaultaxesfontsize',18)
-    arrays = {'S1_spikes','PMd_spikes','M1_spikes'};
-    % arrays = {'S1_spikes','PMd_spikes'};
     monkeys = {'Chewie','Mihili','MrT','Duncan','Han'};
     monkey_colors = linspecer(length(monkeys));
     for arraynum = 1:length(arrays)
@@ -126,15 +82,35 @@ function bumpcurl_dpca
             assert(height(session_table)==1 && height(bl_table)==1) % assume all sessions are on different days
             point_color = monkey_colors(strcmpi(session_table.monkey,monkeys),:);
 
-            % calculate marg var for adaptation
-            ad_expl_var = dpca_explainedVariance(...
-                session_table.fr_tensor{1},...
-                session_table.decoder{1}, session_table.encoder{1},...
-                'combinedParams', session_table.combined_params);
-            bl_expl_var = dpca_explainedVariance(...
-                bl_table.fr_tensor{1},...
-                session_table.decoder{1}, session_table.encoder{1},...
-                'combinedParams', session_table.combined_params);
+            % % figure out which td file we're on
+            % for filenum = 1:length(filenames)
+            %     if strcmpi(trial_data_cell{filenum}(1).monkey,session_table.monkey)
+            %         if strncmp(trial_data_cell{filenum}(1).date_time,session_table.date_time,10)
+            %             td_select = trial_data_cell{filenum};
+            %             td_select = smoothSignals(td_select,struct('signals',arrays{arraynum},'width',0.1));
+            %             if td_select(1).bin_size == 0.005
+            %                 td_select = binTD(td_select,2);
+            %             end
+            %             td_select = trimTD(td_select,struct(...
+            %                 'idx_start',{{'idx_movement_on',-0.1/td_select(1).bin_size}},...
+            %                 'idx_end',{{'idx_movement_on',0.5/td_select(1).bin_size}},...
+            %                 'remove_short',true));
+            %             [~,td_bl] = getTDidx(td_select,'epoch','BL');
+            %             [~,td_ad] = getTDidx(td_select,'epoch','AD');
+            %             break
+            %         end
+            %     end
+            % end
+
+            % % calculate marg var for adaptation
+            % ad_expl_var = dpca_explainedVariance(...
+            %     session_table.fr_tensor{1},...
+            %     session_table.decoder{1}, session_table.encoder{1},...
+            %     'combinedParams', session_table.combined_params);
+            % bl_expl_var = dpca_explainedVariance(...
+            %     bl_table.fr_tensor{1},...
+            %     session_table.decoder{1}, session_table.encoder{1},...
+            %     'combinedParams', session_table.combined_params);
             % bl_expl_var = dpca_explainedVariance(...
             %     bl_table.fr_tensor{1},...
             %     bl_table.decoder{1}, bl_table.encoder{1},...
@@ -146,6 +122,21 @@ function bumpcurl_dpca
 
                 ad_val = 100*session_table.marg_var(margnum)/sum(session_table.marg_var);
                 bl_val = 100*bl_table.marg_var(margnum)/sum(bl_table.marg_var);
+
+                % spike_data_ad = getSig(td_ad,arrays{arraynum});
+                % spike_data_ad = spike_data_ad-mean(spike_data_ad);
+                % spike_data_bl = getSig(td_bl,arrays{arraynum});
+                % spike_data_bl = spike_data_bl-mean(spike_data_bl);
+                % marg_proj_ad = spike_data_ad * session_table.decoder{1}(:,session_table.which_marg==margnum);
+                % marg_proj_bl = spike_data_bl * session_table.decoder{1}(:,session_table.which_marg==margnum);
+                % spike_var_ad = sum(sum(spike_data_ad.^2));
+                % spike_var_bl = sum(sum(spike_data_bl.^2));
+                % marg_pred_ad = marg_proj_ad * transpose(session_table.encoder{1}(:,session_table.which_marg==margnum));
+                % marg_pred_bl = marg_proj_bl * transpose(session_table.encoder{1}(:,session_table.which_marg==margnum));
+                % ad_val = 100*(1-sum(sum((spike_data_ad-marg_pred_ad).^2))/spike_var_ad);
+                % bl_val = 100*(1-sum(sum((spike_data_bl-marg_pred_bl).^2))/spike_var_bl);
+                % ad_val = 100*sum(sum(marg_pred_ad.^2))/spike_var_ad;
+                % bl_val = 100*sum(sum(marg_pred_bl.^2))/spike_var_bl;
 
                 subplot(1,length(session_table.marg_names),margnum)
                 hold on
