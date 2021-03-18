@@ -10,3 +10,6 @@
 [submodule "lib/tensor_toolbox"]
 	path = lib/tensor_toolbox
 	url = https://gitlab.com/tensors/tensor_toolbox.git
+[submodule "lib/TME"]
+	path = lib/TME
+	url = https://github.com/gamaleldin/TME.git
