@@ -5,7 +5,8 @@ function [margvar_table,learning_metric_table] = get_dpca_var(td,params)
     num_boots = 1;
     num_dims = 16;
     filetic = tic;
-    plot_learning_dpcs = false;
+    shuffle_conds = {}; % use this to shuffle trials in one contition (e.g. shuffle_conds={'learning_block'} will shuffle learning block labels). Can be more than one
+    plot_comp_dpcs = false;
     plot_marg = false;
     trim_start = -0.1;
     trim_end = 0.5;
@@ -37,10 +38,13 @@ function [margvar_table,learning_metric_table] = get_dpca_var(td,params)
         learning_blocks{blocknum} = getTDidx(td,'range',learning_block_ranges([blocknum blocknum+1]));
         [td(learning_blocks{blocknum}).learning_block] = deal(blocknum);
     end
-    
+
     % subselect trials for dpca
     all_block_inds = horzcat(learning_blocks{:});
     td_dpca = td(all_block_inds);
+
+    % shuffle conditions if we want to
+    td_dpca = shuffle_td_labels(td_dpca,shuffle_conds);
 
     % get actual bootstrapped dPCA
     margvar_array = cell(length(spikes_in_td),num_boots);
@@ -90,16 +94,17 @@ function [margvar_table,learning_metric_table] = get_dpca_var(td,params)
                 bootnum,...
                 dpca_info.marg_names,...
                 dpca_info.expl_var.totalMarginalizedVar,...
+                100*dpca_info.expl_var.totalMarginalizedVar/sum(dpca_info.expl_var.totalMarginalizedVar),...
                 dpca_info.which_marg,...
                 dpca_info.combined_params,...
                 {dpca_info.W},...
                 {dpca_info.V},...
                 {dpca_info.fr_tensor},...
-                'VariableNames',{'monkey','date_time','array','bootID','marg_names','marg_var','which_marg','combined_params','decoder','encoder','fr_tensor'});
-            margvar_array{arraynum,bootnum}.Properties.VariableDescriptions = {'meta','meta','meta','meta','meta','linear','meta','meta','meta','meta','meta'};
+                'VariableNames',{'monkey','date_time','array','bootID','marg_names','marg_var','marg_var_pct','which_marg','combined_params','decoder','encoder','fr_tensor'});
+            margvar_array{arraynum,bootnum}.Properties.VariableDescriptions = {'meta','meta','meta','meta','meta','linear','linear','meta','meta','meta','meta','meta'};
             
             % set up learning metric table
-            if isfield(td_boot,sprintf('%s_dpca_learning',spikes_in_td{arraynum}))
+            if nargout>1 && isfield(td_boot,sprintf('%s_dpca_learning',spikes_in_td{arraynum}))
                 [~,td_block] = getTDidx(td_boot,'learning_block',length(learning_blocks));
                 td_block = binTD(td_block,'average');
                 
@@ -137,8 +142,9 @@ function [margvar_table,learning_metric_table] = get_dpca_var(td,params)
             end
             
             % do a plot of the dPC space
-            if plot_learning_dpcs && isfield(td_boot,sprintf('%s_dpca_%s',spikes_in_td{arraynum},comp_to_plot))
-                num_blocks = length(unique([td_boot.(sprintf('%s_block',comp_to_plot))]));
+            if plot_comp_dpcs && isfield(td_boot,sprintf('%s_dpca_%s',spikes_in_td{arraynum},comp_to_plot))
+                block_labels = unique([td_boot.(sprintf('%s_block',comp_to_plot))]);
+                num_blocks = length(block_labels);
                 block_colors = colorfunc(num_blocks);
                 figure
                 
@@ -148,8 +154,8 @@ function [margvar_table,learning_metric_table] = get_dpca_var(td,params)
                 scatter(data(:,1),data(:,2),[],colorfunc(length(data)),'filled')
                 hold on
                 
-                for blocknum = unique([td_boot.(sprintf('%s_block',comp_to_plot))])
-                    [~,td_block] = getTDidx(td_boot,sprintf('%s_block',comp_to_plot),blocknum);
+                for blocknum = 1:num_blocks
+                    [~,td_block] = getTDidx(td_boot,sprintf('%s_block',comp_to_plot),block_labels(blocknum));
                     td_block = binTD(td_block,'average');
                     
                     data = get_vars(...
@@ -163,7 +169,10 @@ function [margvar_table,learning_metric_table] = get_dpca_var(td,params)
                 title(sprintf('%s %s projection into %s dims',td_boot(1).monkey,strrep(spikes_in_td{arraynum},'_spikes',''),comp_to_plot))
                 set(gca,'box','off','tickdir','out')
             end
-            fprintf('Arraynum %d: Finished bootstrap iteration %d of %d at time %f\n',arraynum,bootnum,num_boots,toc(filetic))
+
+            if num_boots>1
+                fprintf('Arraynum %d: Finished bootstrap iteration %d of %d at time %f\n',arraynum,bootnum,num_boots,toc(filetic))
+            end
         end
     end
     margvar_table = vertcat(margvar_array{:});
