@@ -12,7 +12,7 @@ function bumpcurl_mahal
     file_info = dir(fullfile(dataroot,'*CO*.mat'));
     filenames = horzcat({file_info.name})';
     
-    save_figures = true;
+    save_figures = false;
     figsavedir = fullfile(homefolder,'Wiki','professional','projects','s1-adaptation','figures','mahal');
 
 %% Load up data into cell array
@@ -20,12 +20,13 @@ function bumpcurl_mahal
     
 %% Loop through trial data files
     num_dims = 16;
+    num_mahal_dims = 4;
     trim_start = -0.1;
     trim_end = 0.5;
     num_control_shuffles = 1000;
-    do_shuffle_control = true;
+    do_shuffle_control = false;
     
-    for filenum = 4:length(filenames)
+    for filenum = 1:length(filenames)
         td = trial_data_cell{filenum};
         [~,td] = getTDidx(td,'epoch','AD');
         
@@ -50,13 +51,15 @@ function bumpcurl_mahal
             
             true_mahal_curve = get_mahal_curve(td,struct(...
                 'signals',spikes_in_td{arraynum},...
-                'num_dims',num_dims));
+                'num_dims',num_dims,...
+                'num_mahal_dims',num_mahal_dims));
             
             % get shuffle control
             if do_shuffle_control
                 shuffle_mahal_curve = zeros(length(td),num_control_shuffles);
                 for shufflenum = 1:num_control_shuffles
-                    td_shuffle = shuffle_td_labels(td,'learning_block');
+                    td_shuffle = td;
+%                     td_shuffle = shuffle_td_labels(td_shuffle,'learning_block');
                     td_shuffle = td_shuffle(randperm(length(td_shuffle)));
                     try
                         shuffle_mahal_curve(:,shufflenum) = get_mahal_curve(td_shuffle,struct(...
@@ -68,7 +71,12 @@ function bumpcurl_mahal
                 end
             end
             
-            fig = figure('defaultaxesfontsize',15,'position',[100 100 1000 500]);
+            fig = figure(...
+                'defaultaxesfontsize',10,...
+                'units','inches',...
+                'position',[3 3 6 3],...
+                'paperunits','inches',...
+                'papersize',[6 3]);
             % plot out dPC space
             subplot(2,2,[1 3])
             plot_dpc_space(td,struct('signals',spikes_in_td{arraynum}))
@@ -82,26 +90,32 @@ function bumpcurl_mahal
                     [shuffle_curve_bounds(:,1); flipud(shuffle_curve_bounds(:,2))],...
                     [0.5 0.5 0.5],...
                     'facealpha',0.5)
-                hold on
+            else % use a simple chi-squared distribution to estimate 95% CI
+                mahal_thresh = chi2inv(0.95,num_mahal_dims);
+                plot([1 length(true_mahal_curve)],repmat(mahal_thresh,1,2),'--','linewidth',2,'color',[0.5 0.5 0.5])
+                text(length(true_mahal_curve)/2,mahal_thresh,'95% CI bound','FontSize',10,'color',[0.5 0.5 0.5])
             end
-            smoothing_window_size = 20;
+            hold on
+            smoothing_window_size = 10;
             smoothing_kernel = ones(1,smoothing_window_size)/smoothing_window_size;
             smoothed_dist = conv(true_mahal_curve,smoothing_kernel,'same');
             plot(1:length(true_mahal_curve),smoothed_dist,'k','linewidth',2)
-            ylabel({'Mahalanobis distance';'to final 40 trials'})
-            set(gca,'box','off','tickdir','out','xlim',[0 length(td)+1])
+            text_idx = floor(length(true_mahal_curve)/10);
+            text(text_idx,smoothed_dist(text_idx),'Mahalanobis distance to final 40 trials','fontsize',10)
+%             ylabel({'Mahalanobis distance';'to final 40 trials'})
+            set(gca,'box','off','tickdir','out','xlim',[0 length(td)+1],'xticklabel',{})
 
             % plot out learning metric
             subplot(2,2,4)
-            metric = cat(1,td.learning_metric);
-            plot(conv(metric,smoothing_kernel,'same'),'k-')
+            metric = cat(1,td.learning_metric)*180/pi;
+            plot(conv(metric,smoothing_kernel,'same'),'k-','linewidth',2)
             hold on
             plot([0 length(td)],[0 0],'k-','linewidth',2)
-            ylabel('Learning metric')
+            ylabel('Takeoff angle error (deg)')
             xlabel('Trial number')
             set(gca,'box','off','tickdir','out','xlim',[0 length(td)+1])
             
-            suptitle(sprintf('%s %s %s',td(1).monkey,td(1).date_time,spikes_in_td{arraynum}))
+            suptitle(sprintf('%s %s %s',td(1).monkey,td(1).date_time,strrep(spikes_in_td{arraynum},'_spikes','')))
             
             if save_figures
                 sanitized_datetime = regexp(td(1).date_time,'^\d+[\/-]\d+[\/-]\d+','match');
@@ -118,7 +132,7 @@ end
 
 %%%% subfunctions %%%%
 function mahal_curve = get_mahal_curve(td,params)
-% function to get a mahalanobis distace curve from the learning dimensions
+% function to get a squared mahalanobis distace curve from the learning dimensions
 % for a given trial_data structure, assuming there are target_block and
 % learning_block labels
 % inputs -
@@ -126,14 +140,15 @@ function mahal_curve = get_mahal_curve(td,params)
 %   params - params struct
 %       .signals - signals cell array or char array
 %       .num_dims - how many dPCA dimensions to use
+%       .num_mahal_dims - how many dimensions to calculate mahalanobis distance
 %       .plot_comp_dpcs - whether to plot dpc dots
 %       .comp_to_plot - which components to plot
 % Outputs - 
-%   neural_tensor - tensor of neural activity in learning dimensions
-%       (third order tensor, shape = time_points x learning_dims x trials)
+%   mahal_curve - array of squared mahalanobis distances (one for each trial)
 
     % params
     num_dims = 16;
+    num_mahal_dims = 4;
     signals = '';
     assignParams(who,params);
     
@@ -149,7 +164,7 @@ function mahal_curve = get_mahal_curve(td,params)
     full_data = cat(3,td.(sprintf('%s_dpca_learning',signals)));
     % marginalize and subselect dims
     full_data = squeeze(mean(full_data,1))';
-    full_data = full_data(:,1:4);
+    full_data = full_data(:,1:num_mahal_dims);
 
     % get ref data
     ref_data = full_data(end-40:end,:);
@@ -196,6 +211,16 @@ function plot_dpc_space(td,params)
 
         plotErrorEllipse(mean(data,1),cov(data),0.95,'color',block_colors(blocknum,:),'linewidth',2)
     end
+    
+    xlims = get(gca,'xlim');
+    ylims = get(gca,'ylim');
+    plot([xlims(1) xlims(1)+0.2],[ylims(1) ylims(1)],'k','linewidth',2)
+    plot([xlims(1) xlims(1)],[ylims(1) ylims(1)+0.2],'k','linewidth',2)
+    text(xlims(1)+0.05,ylims(1)+0.05,'0.2','FontSize',10)
+    
+    set(gca,'box','off','tickdir','out')
+    axis equal
+    axis off
     xlabel(sprintf('%s dim 1',comp_to_plot))
     ylabel(sprintf('%s dim 2',comp_to_plot))
     title(sprintf('Projection into %s dims',comp_to_plot))
