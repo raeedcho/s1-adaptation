@@ -33,6 +33,10 @@ function [margvar_table,learning_metric_table] = get_dpca_var(td,params)
         td(trialnum).timevec = timevec';
     end
 
+    if isfield(td,'learning_block')
+        % in case it was already assigned for some reason, we want to reassign it here
+        td = rmfield(td,'learning_block');
+    end
     learning_blocks = cell(1,length(learning_block_ranges)-1);
     for blocknum = 1:length(learning_blocks)
         learning_blocks{blocknum} = getTDidx(td,'range',learning_block_ranges([blocknum blocknum+1]));
@@ -44,7 +48,9 @@ function [margvar_table,learning_metric_table] = get_dpca_var(td,params)
     td_dpca = td(all_block_inds);
 
     % shuffle conditions if we want to
-    td_dpca = shuffle_td_labels(td_dpca,shuffle_conds);
+    if ~isempty(shuffle_conds)
+        td_dpca = shuffle_td_labels(td_dpca,shuffle_conds);
+    end
 
     % get actual bootstrapped dPCA
     margvar_array = cell(length(spikes_in_td),num_boots);
