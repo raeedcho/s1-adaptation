@@ -183,6 +183,16 @@ function trial_data_cell = load_curl_data(filenames)
             learning_blocks{blocknum} = getTDidx(td,'epoch','AD','range',learning_block_ranges([blocknum blocknum+1]));
             [td(learning_blocks{blocknum}).learning_block] = deal(blocknum);
         end
+
+        % add fake learning block indices to baseline and washout to match learning blocks in adaptation
+        num_trials_in_learning_block = mode(cellfun(@length,learning_blocks));
+        bl_idx = getTDidx(td,'epoch','BL');
+        wo_idx = getTDidx(td,'epoch','WO');
+        %reference to last baseline idx
+        bl_blocknum = num2cell(floor((bl_idx-(bl_idx(end)+1))/num_trials_in_learning_block)+1);
+        [td(bl_idx).learning_block] = deal(bl_blocknum{:});
+        wo_blocknum = num2cell(floor((wo_idx-(wo_idx(1)))/num_trials_in_learning_block)+length(learning_blocks)+1);
+        [td(wo_idx).learning_block] = deal(wo_blocknum{:});
         
         % add learning metric to trial_data
         bin_size = td(1).bin_size;
