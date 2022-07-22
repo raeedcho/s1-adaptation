@@ -37,7 +37,7 @@ function bumpcurl_mahal
         
         % trim from go cue to end time (skip bump)
         spikes_in_td = getTDfields(td,'spikes');
-        td = smoothSignals(td,struct('signals',{spikes_in_td},'width',0.1));
+        td = smoothSignals(td,struct('signals',{spikes_in_td},'width',0.05));
         td = trimTD(td,struct(...
             'idx_start',{{'idx_movement_on',trim_start/td(1).bin_size}},...
             'idx_end',{{'idx_movement_on',trim_end/td(1).bin_size}},...
@@ -63,7 +63,9 @@ function bumpcurl_mahal
             true_mahal_curve = get_mahal_curve(td,struct(...
                 'signals',spikes_in_td{arraynum},...
                 'num_dims',num_dims,...
-                'num_mahal_dims',num_mahal_dims));
+                'num_mahal_dims',num_mahal_dims,...
+                'use_dpca',true ...
+            ));
             
             initial_mahal_dist = mean(true_mahal_curve(1:floor(length(true_mahal_curve)*0.1)));
             
@@ -127,7 +129,7 @@ function bumpcurl_mahal
             xlabel('Trial number')
             set(gca,'box','off','tickdir','out','xlim',[0 length(td)+1])
             
-            suptitle(sprintf('%s %s %s',td(1).monkey,td(1).date_time,strrep(spikes_in_td{arraynum},'_spikes','')))
+            sgtitle(sprintf('%s %s %s',td(1).monkey,td(1).date_time,strrep(spikes_in_td{arraynum},'_spikes','')))
             
             if save_figures
                 sanitized_datetime = regexp(td(1).date_time,'^\d+[\/-]\d+[\/-]\d+','match');
@@ -223,18 +225,30 @@ function mahal_curve = get_mahal_curve(td,params)
     num_dims = 16;
     num_mahal_dims = 4;
     signals = '';
+    use_dpca = true;
     assignParams(who,params);
     
-    % run dPCA on data with target and learning blocks
-    [td, ~] = runDPCA(td,'target_block','learning_block',struct(...
-        'signals',signals,...
-        'combined_params',{{{1}, {2,[1 2]}, {3,[1 3],[2 3],[1 2 3]}}},...
-        'marg_names',{{'time','target','learning'}},...
-        'marg_colors',[150 150 150; 23 100 171; 187 20 25]/256,... % grey, blue, red
-        'do_plot',false,'num_dims',num_dims,'out_sig_prefix',strcat(signals,'_','dpca')));
+    if use_dpca
+        % run dPCA on data with target and learning blocks
+        [td, ~] = runDPCA(td,'target_block','learning_block',struct(...
+            'signals',signals,...
+            'combined_params',{{{1}, {2,[1 2]}, {3,[1 3],[2 3],[1 2 3]}}},...
+            'marg_names',{{'time','target','learning'}},...
+            'marg_colors',[150 150 150; 23 100 171; 187 20 25]/256,... % grey, blue, red
+            'do_plot',false,'num_dims',num_dims,'out_sig_prefix',strcat(signals,'_','dpca')));
+    
+        full_data = cat(3,td.(sprintf('%s_dpca_learning',signals)));
+    else
+        [td,~] = dimReduce(td,struct(...
+            'algorithm','pca',...
+            'signals',signals,...
+            'num_dims',num_dims ...
+        ));
+
+        full_data = cat(3,td.(strrep(signals,'_spikes','_pca')));
+    end
 
     % get mahalanobis distance of each trial from final trials
-    full_data = cat(3,td.(sprintf('%s_dpca_learning',signals)));
     % marginalize and subselect dims
     full_data = squeeze(mean(full_data,1))';
     full_data = full_data(:,1:num_mahal_dims);
