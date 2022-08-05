@@ -30,20 +30,6 @@ function trial_data_cell = load_curl_data(filenames)
             'idx_go_cue','idx_goCueTime';...
             }}));
 
-        % process marker data (if it's there)
-        if isfield(td,'markers')
-            % find times when markers are NaN and replace with zeros temporarily
-            for trialnum = 1:length(td)
-                markernans = isnan(td(trialnum).markers);
-                td(trialnum).markers(markernans) = 0;
-                td(trialnum) = smoothSignals(td(trialnum),struct('signals','markers'));
-                td(trialnum).markers(markernans) = NaN;
-                clear markernans
-            end
-    
-            % get marker velocity
-            td = getDifferential(td,struct('signals','markers','alias','marker_vel'));
-        end
         
         % get speed and ds
         td = getNorm(td,struct('signals','vel','field_extra','_norm'));
@@ -97,48 +83,9 @@ function trial_data_cell = load_curl_data(filenames)
         if any(nanners)
             fprintf('Removed %d trials because of missing target direction\n',sum(nanners))
         end
-        % biggers = ~isnan(cat(1,td.bumpDir)) & abs(cat(1,td.bumpDir))>360;
-        % td = td(~biggers);
-        % fprintf('Removed %d trials because bump direction makes no sense\n',sum(biggers))
-    
-%         % remove trials where markers aren't present
-%         if isfield(td,'markers')
-%             bad_trial = false(length(td),1);
-%             for trialnum = 1:length(td)
-%                 if any(any(isnan(td(trialnum).markers)))
-%                     bad_trial(trialnum) = true;
-%                 end
-%             end
-%             td(bad_trial) = [];
-%             if any(bad_trial)
-%                 fprintf('Removed %d trials because of missing markers\n',sum(bad_trial))
-%             end
-%         end
-%         
-%         % remove trials where muscles aren't present
-%         if isfield(td,'muscle_len')
-%             bad_trial = false(length(td),1);
-%             for trialnum = 1:length(td)
-%                 if any(any(isnan(td(trialnum).muscle_len) | isnan(td(trialnum).muscle_vel)))
-%                     bad_trial(trialnum) = true;
-%                 end
-%             end
-%             td(bad_trial) = [];
-%             if any(bad_trial)
-%                 fprintf('Removed %d trials because of missing muscles\n',sum(bad_trial))
-%             end
-%         end
         
         % find the relevant movmement onsets
         if ~isfield(td,'idx_movement_on')
-%             td = getMoveOnsetAndPeak(td,struct(...
-%                 'start_idx','idx_goCueTime',...
-%                 'start_idx_offset',floor(0.15/td(1).bin_size),...
-%                 'peak_idx_offset',floor(0.20/td(1).bin_size),...
-%                 'end_idx','idx_endTime',...
-%                 'method','peak',...
-%                 'peak_divisor',10,...
-%                 'min_ds',1));
             % kyle's params
             td = getMoveOnsetAndPeak(td,struct(...
                 'start_idx','idx_goCueTime',...
@@ -198,13 +145,6 @@ function trial_data_cell = load_curl_data(filenames)
         bin_size = td(1).bin_size;
         td_temp=td;
 %         td_temp = smoothSignals(td,struct('signals','vel','width',0.1));
-        % metric = getLearningMetrics(td_temp,struct(...
-        %     'which_metric','angle',...
-        %     'use_bl_ref',true,...
-        %     'fit_bl_ref_curve',false,...
-        %     'vel_or_pos','pos',...
-        %     'target_dir_fieldname','tgtDir',...
-        %     'time_window',{{'idx_movement_on',floor(-0.02/bin_size);'idx_movement_on',floor(0.3/bin_size)}}));
         % kyle's params
         metric = getLearningMetrics(td_temp,struct(...
             'which_metric','angle',...
