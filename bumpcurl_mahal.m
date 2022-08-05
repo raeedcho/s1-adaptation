@@ -11,37 +11,80 @@ function bumpcurl_mahal
     dataroot = fullfile(homefolder,'data','project-data','limblab','s1-adapt','td-library');
     file_info = dir(fullfile(dataroot,'*CO*.mat'));
     filenames = horzcat({file_info.name})';
-    
-    save_figures = false;
-    figsavedir = fullfile(homefolder,'Wiki','professional','projects','s1-adaptation','figures','mahal');
 
-%% Load up data into cell array
+    % Load up data into cell array
     trial_data_cell = load_curl_data(fullfile(dataroot,filenames));
     
-%% Loop through trial data files
+%% Loop through trial data files for active data
+    active_params = struct(...
+        'save_figures', false,...
+        'figsavedir', fullfile(homefolder,'Wiki','professional','projects','s1-adaptation','figures','mahal','active'),...
+        'num_dims', 16,...
+        'num_mahal_dims', 4,...
+        'alignment_event', 'idx_movement_on',...
+        'arrays_to_plot', {{'M1','S1'}},...
+        'smoothing_window_size', 10 ...
+    );
+    
+    mahal_curve_table = iterate_mahal_curves(trial_data_cell,active_params);
+
+    % plot out all mahal curves, colored by array
+    plot_mahal_summary(mahal_curve_table,active_params)
+    
+    
+
+%% get passive mahal curves
+    passive_params = struct(...
+        'save_figures', false,...
+        'figsavedir', fullfile(homefolder,'Wiki','professional','projects','s1-adaptation','figures','mahal','passive'),...
+        'num_dims', 16,...
+        'num_mahal_dims', 4,...
+        'alignment_event', 'idx_bumpTime',...
+        'arrays_to_plot', {{'M1','S1'}},...
+        'smoothing_window_size', 10 ...
+    );
+    
+    mahal_curve_table = iterate_mahal_curves(trial_data_cell,passive_params);
+    plot_mahal_summary(mahal_curve_table,passive_params)
+    
+end
+
+%%%% subfunctions %%%%
+function mahal_curve_table = iterate_mahal_curves(trial_data_cell,params)
+
+    alignment_event = 'idx_movement_on';
+    arrays_to_plot = {'M1','S1'};
     num_dims = 16;
     num_mahal_dims = 4;
-%     alignment_event = 'idx_movement_on';
-%     trim_start = -0.1;
-%     trim_end = 0.5;
-    trim_start = 0;
-    trim_end = 0.3;
-    alignment_event = 'idx_bumpTime';
-    arrays_to_plot = {'M1','S1'};
-    smoothing_window_size = 10;
-    smoothing_kernel = ones(1,smoothing_window_size)/smoothing_window_size;
+    save_figures = false;
+    figsavedir = '';
+    assignParams(who,params)
+
+    if strcmpi(alignment_event,'idx_movement_on')
+        trim_start = -0.1;
+        trim_end = 0.5;
+    elseif strcmpi(alignment_event,'idx_bumpTime')
+        trim_start = 0;
+        trim_end = 0.3;
+    end
     
-    mahal_curve_file=cell(length(filenames),1);
-    
-    for filenum = [3 6]%1:length(filenames)
+    mahal_curve_file=cell(length(trial_data_cell),1);
+    for filenum = 1:length(trial_data_cell)
         td = trial_data_cell{filenum};
         [~,td] = getTDidx(td,'epoch','AD');
+
+        if ~isfield(td,alignment_event)
+            continue
+        end
         
         % trim from go cue to end time (skip bump)
         spikes_in_td = getTDfields(td,'spikes');
         td = smoothSignals(td,struct('signals',{spikes_in_td},'width',0.05));
 
         valid_trials = ~isnan(cat(1,td.(alignment_event)));
+        if ~any(valid_trials)
+            continue
+        end
         td = trimTD(td(valid_trials),struct(...
             'idx_start',{{alignment_event,trim_start/td(1).bin_size}},...
             'idx_end',{{alignment_event,trim_end/td(1).bin_size}},...
@@ -54,140 +97,26 @@ function bumpcurl_mahal
         
         mahal_curve_arr = cell(1,length(spikes_in_td));
         for arraynum = 1:length(spikes_in_td)
-            % check to make sure there are enough neurons
-            if size(getSig(td,spikes_in_td{arraynum}),2)<=num_dims
-                continue;
-            end
-            
             % check to only plot the arrays we want
             if ~contains(spikes_in_td{arraynum},arrays_to_plot)
                 continue
             end
-            
-            true_mahal_curve = get_mahal_curve(td,struct(...
+
+            mahal_curve_arr{arraynum} = get_mahal_curve(td,struct(...
                 'signals',spikes_in_td{arraynum},...
                 'num_dims',num_dims,...
                 'num_mahal_dims',num_mahal_dims,...
-                'use_dpca',true ...
+                'do_plot',true,...
+                'save_figures',save_figures,...
+                'figsavedir',figsavedir...
             ));
-            
-            initial_mahal_dist = mean(true_mahal_curve(1:floor(length(true_mahal_curve)*0.1)));
-            
-            fig = figure(...
-                'defaultaxesfontsize',10,...
-                'units','inches',...
-                'position',[3 3 6 3],...
-                'paperunits','inches',...
-                'papersize',[6 3]);
-            % plot out dPC space
-            subplot(2,2,[1 3])
-            plot_dpc_space(td,struct('signals',spikes_in_td{arraynum}))
-            
-            % plot out mahal distance over trials
-            subplot(2,2,2)
-
-            % use a simple chi-squared distribution to estimate 95% CI
-            mahal_thresh = chi2inv(0.95,num_mahal_dims);
-            plot([1 length(true_mahal_curve)],repmat(mahal_thresh,1,2),'--','linewidth',2,'color',[0.5 0.5 0.5])
-            text(length(true_mahal_curve)/2,mahal_thresh,'95% CI bound','FontSize',10,'color',[0.5 0.5 0.5])
-
-            hold on
-            
-            smoothed_dist = conv(true_mahal_curve,smoothing_kernel,'same');
-            plot(1:length(true_mahal_curve),smoothed_dist,'k','linewidth',2)
-            text_idx = floor(length(true_mahal_curve)/10);
-            text(text_idx,smoothed_dist(text_idx),'Mahalanobis distance to final 40 trials','fontsize',10)
-%             ylabel({'Mahalanobis distance';'to final 40 trials'})
-            set(gca,'box','off','tickdir','out','xlim',[0 length(td)+1],'xticklabel',{})
-
-            % plot out learning metric
-            subplot(2,2,4)
-            metric = cat(1,td.learning_metric)*180/pi;
-            plot(conv(metric,smoothing_kernel,'same'),'k-','linewidth',2)
-            hold on
-            plot([0 length(td)],[0 0],'k-','linewidth',2)
-            ylabel('Takeoff angle error (deg)')
-            xlabel('Trial number')
-            set(gca,'box','off','tickdir','out','xlim',[0 length(td)+1])
-            
-            sgtitle(sprintf('%s %s %s',td(1).monkey,td(1).date_time,strrep(spikes_in_td{arraynum},'_spikes','')))
-            
-            if save_figures
-                sanitized_datetime = regexp(td(1).date_time,'^\d+[\/-]\d+[\/-]\d+','match');
-                sanitized_datetime = strrep(sanitized_datetime{1},'/','');
-                saveas(fig,fullfile(figsavedir,sprintf(...
-                    '%s_%s_%s_dpc_mahal_dist.pdf',...
-                    td(1).monkey,...
-                    sanitized_datetime,...
-                    strrep(spikes_in_td{arraynum},'_spikes',''))));
-            end
-            
-            mahal_curve_arr{arraynum} = table(...
-                {td(1).monkey},...
-                {td(1).date_time},...
-                {strrep(spikes_in_td{arraynum},'_spikes','')},...
-                {true_mahal_curve'},...
-                initial_mahal_dist,...
-                'VariableNames',{'monkey','date_time','array','mahal_curve','initial_mahal_dist'});
         end
         mahal_curve_file{filenum} = vertcat(mahal_curve_arr{:});
     end
     mahal_curve_table = vertcat(mahal_curve_file{:});
-    
-    
-%% plot out all mahal curves, colored by array
-    compiled_mahal_fig = figure(...
-        'defaultaxesfontsize',10,...
-        'units','inches',...
-        'position',[3 3 6 3],...
-        'paperunits','inches',...
-        'papersize',[6 3]);
-    ax(1) = subplot(1,3,1:2);
-    
-    patch([0 0.1 0.1 0],[0 0 60 60],[0.8 0.8 0.8],'edgecolor','none')
-    hold on
-    
-    mahal_thresh = chi2inv(0.95,num_mahal_dims);
-    plot([0 1],repmat(mahal_thresh,1,2),'--','linewidth',2,'color',[0.5 0.5 0.5])
-    text(0.7,1.4*mahal_thresh,'95% CI bound','FontSize',10,'color',[0.5 0.5 0.5])
-    
-    array_colors = linspecer(length(arrays_to_plot));
-    
-    for arraynum = 1:length(arrays_to_plot)
-        [~,mahal_curve_array] = getNTidx(mahal_curve_table,'array',arrays_to_plot{arraynum});
-        for sessionnum = 1:height(mahal_curve_array)
-            temp_mahal_curve = mahal_curve_array{sessionnum,'mahal_curve'}{1};
-            plot(...
-                (1:length(temp_mahal_curve))/length(temp_mahal_curve),...
-                conv(temp_mahal_curve,smoothing_kernel,'same'),...
-                'linewidth',2,'color',array_colors(arraynum,:))
-        end
-        text(0.25*arraynum,(4-arraynum)*mahal_thresh,arrays_to_plot{arraynum},'FontSize',10,'color',array_colors(arraynum,:))
-    end
-    xlabel('Fraction into adaptation epoch')
-    ylabel('Mahal dist to final 40 trials')
-    set(gca,'box','off','tickdir','out','xtick',0.2:0.2:1,'ytick',20:20:60)
-    
-    ax(2) = subplot(1,3,3);
-    [~,array_idx] = ismember(mahal_curve_table{:,'array'},arrays_to_plot);
-    plot([0.5 0.5+length(arrays_to_plot)],repmat(mahal_thresh,1,2),'--','linewidth',2,'color',[0.5 0.5 0.5])
-    hold on
-    text(0.7,1.4*mahal_thresh,'95% CI bound','FontSize',10,'color',[0.5 0.5 0.5])
-    scatter(array_idx,mahal_curve_table{:,'initial_mahal_dist'},[],array_colors(array_idx,:),'filled')
-    ylabel('Distance in first 10% of adaptation')
-    set(gca,'box','off','tickdir','out',...
-        'xlim',[0.5 0.5+length(arrays_to_plot)],'xtick',1:length(arrays_to_plot),'xticklabel',arrays_to_plot,...
-        'ytick',20:20:60,'yticklabel',{})
-    linkaxes(ax,'y')
-    
-    if save_figures
-        saveas(compiled_mahal_fig,fullfile(figsavedir,'dpc_mahal_dist_compiled.pdf'));
-    end
-    
 end
 
-%%%% subfunctions %%%%
-function mahal_curve = get_mahal_curve(td,params)
+function mahal_curve_row = get_mahal_curve(td,params)
 % function to get a squared mahalanobis distace curve from the learning dimensions
 % for a given trial_data structure, assuming there are target_block and
 % learning_block labels
@@ -207,7 +136,15 @@ function mahal_curve = get_mahal_curve(td,params)
     num_mahal_dims = 4;
     signals = '';
     use_dpca = true;
+    do_plot = true;
+    save_figures = false;
     assignParams(who,params);
+
+    % check to make sure there are enough neurons
+    if size(getSig(td,signals),2)<=num_dims
+        mahal_curve_row = table();
+        return
+    end
     
     if use_dpca
         % run dPCA on data with target and learning blocks
@@ -237,8 +174,63 @@ function mahal_curve = get_mahal_curve(td,params)
     % get ref data
     ref_data = full_data(end-40:end,:);
 
+    % calculate mahal distance and starting point
     mahal_curve = mahal(full_data,ref_data);
+    initial_mahal_dist = mean(mahal_curve(1:floor(length(mahal_curve)*0.1)));
+
+    % package output
+    mahal_curve_row = table(...
+        {td(1).monkey},...
+        {td(1).date_time},...
+        {strrep(signals,'_spikes','')},...
+        {mahal_curve'},...
+        initial_mahal_dist,...
+        'VariableNames',{'monkey','date_time','array','mahal_curve','initial_mahal_dist'});
+
+    % if we want to plot
+    if do_plot
+        fig = plot_session_mahal(td,mahal_curve,params);
+        if save_figures
+            sanitized_datetime = regexp(td(1).date_time,'^\d+[\/-]\d+[\/-]\d+','match');
+            sanitized_datetime = strrep(sanitized_datetime{1},'/','');
+            saveas(fig,fullfile(figsavedir,sprintf(...
+                '%s_%s_%s_dpc_mahal_dist.pdf',...
+                td(1).monkey,...
+                sanitized_datetime,...
+                strrep(signals,'_spikes',''))));
+        end
+    end
 end
+
+function fig = plot_session_mahal(td,mahal_curve,params)
+
+    signals = '';
+    num_mahal_dims = 4;
+    smoothing_window_size = 10;
+    assignParams(who,params);
+
+    fig = figure(...
+        'defaultaxesfontsize',10,...
+        'units','inches',...
+        'position',[3 3 6 3],...
+        'paperunits','inches',...
+        'papersize',[6 3]);
+    % plot out dPC space
+    subplot(2,2,[1 3])
+    plot_dpc_space(td,params)
+    
+    % plot out mahal distance over trials
+    subplot(2,2,2)
+    plot_mahal_curve(mahal_curve,params)
+    xlabel('')
+
+    % plot out learning metric
+    subplot(2,2,4)
+    plot_learning_metric(td,params)
+    
+    sgtitle(sprintf('%s %s %s',td(1).monkey,td(1).date_time,strrep(signals,'_spikes','')))
+end
+
 
 function plot_dpc_space(td,params)
 % function to plot out learning space of average neural activity per trial, separated by learning block
@@ -294,24 +286,105 @@ function plot_dpc_space(td,params)
     title(sprintf('Projection into %s dims',comp_to_plot))
 end
 
-function plot_mahal_curve(mahal_table)
+function plot_mahal_curve(mahal_curve,params)
 % function to plot out the mahalnobis distance curve
 
-    smoothing_window_size = 20;
-    smoothing_kernel = ones(1,smoothing_window_size)/smoothing_window_size;
-    
-    smoothed_dist = conv(true_mahal_curve,smoothing_kernel,'same');
-    figure
-    subplot(2,1,1)
-    plot(1:length(true_mahal_curve),smoothed_dist,'k','linewidth',2)
-    set(gca,'box','off','tickdir','out')
-    ylabel('Mahalanobis distance to final 40 trials in dPC space')
-    title(sprintf('%s %s %s',td(1).monkey,td(1).date_time,spikes_in_td{arraynum}))
+    num_mahal_dims = 4;
+    smoothing_window_size = 10;
+    assignParams(who,params)
 
-    subplot(2,1,2)
-    metric = cat(1,td.learning_metric);
-    plot(conv(metric,smoothing_kernel,'same'),'k-')
+    smoothing_kernel = ones(1,smoothing_window_size)/smoothing_window_size;
+
+    % use a simple chi-squared distribution to estimate 95% CI
+    mahal_thresh = chi2inv(0.95,num_mahal_dims);
+    plot([1 length(mahal_curve)],repmat(mahal_thresh,1,2),'--','linewidth',2,'color',[0.5 0.5 0.5])
+    text(length(mahal_curve)/2,mahal_thresh,'95% CI bound','FontSize',10,'color',[0.5 0.5 0.5])
+
+    hold on
+    
+    smoothed_dist = conv(mahal_curve,smoothing_kernel,'same');
+    plot(1:length(mahal_curve),smoothed_dist,'k','linewidth',2)
+    text_idx = floor(length(mahal_curve)/10);
+    text(text_idx,smoothed_dist(text_idx),'Mahalanobis distance to final 40 trials','fontsize',10)
+    xlabel('Trial number')
+    set(gca,'box','off','tickdir','out','xlim',[0 length(mahal_curve)+1],'xticklabel',{})
+end
+
+function plot_learning_metric(td,params)
+    
+    smoothing_window_size = 10;
+    assignParams(who,params)
+
+    smoothing_kernel = ones(1,smoothing_window_size)/smoothing_window_size;
+
+    metric = cat(1,td.learning_metric)*180/pi;
+    plot(conv(metric,smoothing_kernel,'same'),'k-','linewidth',2)
     hold on
     plot([0 length(td)],[0 0],'k-','linewidth',2)
+    ylabel('Takeoff angle error (deg)')
     xlabel('Trial number')
+    set(gca,'box','off','tickdir','out','xlim',[0 length(td)+1])
+end
+
+function plot_mahal_summary(mahal_curve_table,params)
+
+    smoothing_window_size = 10;
+    num_mahal_dims = 4;
+    arrays_to_plot = {'M1','S1'};
+    save_figures = false;
+    figsavedir = '';
+    assignParams(who,params)
+
+    smoothing_kernel = ones(1,smoothing_window_size)/smoothing_window_size;
+
+    compiled_mahal_fig = figure(...
+        'defaultaxesfontsize',10,...
+        'units','inches',...
+        'position',[3 3 6 3],...
+        'paperunits','inches',...
+        'papersize',[6 3]);
+    ax(1) = subplot(1,3,1:2);
+    
+    patch([0 0.1 0.1 0],[0 0 60 60],[0.8 0.8 0.8],'edgecolor','none')
+    hold on
+    
+    mahal_thresh = chi2inv(0.95,num_mahal_dims);
+    plot([0 1],repmat(mahal_thresh,1,2),'--','linewidth',2,'color',[0.5 0.5 0.5])
+    text(0.7,1.4*mahal_thresh,'95% CI bound','FontSize',10,'color',[0.5 0.5 0.5])
+    
+    array_colors = linspecer(length(arrays_to_plot));
+    
+    for arraynum = 1:length(arrays_to_plot)
+        [~,mahal_curve_array] = getNTidx(mahal_curve_table,'array',arrays_to_plot{arraynum});
+        if height(mahal_curve_array)==0
+            continue
+        end
+        for sessionnum = 1:height(mahal_curve_array)
+            temp_mahal_curve = mahal_curve_array{sessionnum,'mahal_curve'}{1};
+            plot(...
+                (1:length(temp_mahal_curve))/length(temp_mahal_curve),...
+                conv(temp_mahal_curve,smoothing_kernel,'same'),...
+                'linewidth',2,'color',array_colors(arraynum,:))
+        end
+        text(0.25*arraynum,(4-arraynum)*mahal_thresh,arrays_to_plot{arraynum},'FontSize',10,'color',array_colors(arraynum,:))
+    end
+    xlabel('Fraction into adaptation epoch')
+    ylabel('Mahal dist to final 40 trials')
+    set(gca,'box','off','tickdir','out','xtick',0.2:0.2:1,'ytick',20:20:60)
+    
+    ax(2) = subplot(1,3,3);
+    [~,array_idx] = ismember(mahal_curve_table{:,'array'},arrays_to_plot);
+    plot([0.5 0.5+length(arrays_to_plot)],repmat(mahal_thresh,1,2),'--','linewidth',2,'color',[0.5 0.5 0.5])
+    hold on
+    text(0.7,1.4*mahal_thresh,'95% CI bound','FontSize',10,'color',[0.5 0.5 0.5])
+    scatter(array_idx,mahal_curve_table{:,'initial_mahal_dist'},[],array_colors(array_idx,:),'filled')
+    ylabel('Distance in first 10% of adaptation')
+    set(gca,'box','off','tickdir','out',...
+        'xlim',[0.5 0.5+length(arrays_to_plot)],'xtick',1:length(arrays_to_plot),'xticklabel',arrays_to_plot,...
+        'ytick',20:20:60,'yticklabel',{})
+    linkaxes(ax,'y')
+    
+    if save_figures
+        saveas(compiled_mahal_fig,fullfile(figsavedir,'dpc_mahal_dist_compiled.pdf'));
+    end
 end
