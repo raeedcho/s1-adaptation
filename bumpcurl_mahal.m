@@ -27,8 +27,6 @@ function bumpcurl_mahal
     trim_start = 0;
     trim_end = 0.3;
     alignment_event = 'idx_bumpTime';
-    num_control_shuffles = 1000;
-    do_shuffle_control = false;
     arrays_to_plot = {'M1','S1'};
     smoothing_window_size = 10;
     smoothing_kernel = ones(1,smoothing_window_size)/smoothing_window_size;
@@ -75,23 +73,6 @@ function bumpcurl_mahal
             
             initial_mahal_dist = mean(true_mahal_curve(1:floor(length(true_mahal_curve)*0.1)));
             
-            % get shuffle control
-            if do_shuffle_control
-                shuffle_mahal_curve = zeros(length(td),num_control_shuffles);
-                for shufflenum = 1:num_control_shuffles
-                    td_shuffle = td;
-%                     td_shuffle = shuffle_td_labels(td_shuffle,'learning_block');
-                    td_shuffle = td_shuffle(randperm(length(td_shuffle)));
-                    try
-                        shuffle_mahal_curve(:,shufflenum) = get_mahal_curve(td_shuffle,struct(...
-                            'signals',spikes_in_td{arraynum},...
-                            'num_dims',num_dims));
-                    catch
-                        continue
-                    end
-                end
-            end
-            
             fig = figure(...
                 'defaultaxesfontsize',10,...
                 'units','inches',...
@@ -104,18 +85,12 @@ function bumpcurl_mahal
             
             % plot out mahal distance over trials
             subplot(2,2,2)
-            if do_shuffle_control
-                shuffle_curve_bounds = prctile(shuffle_mahal_curve,[2.5 97.5],2);
-                patch(...
-                    [1:length(shuffle_curve_bounds) length(shuffle_curve_bounds):-1:1],...
-                    [shuffle_curve_bounds(:,1); flipud(shuffle_curve_bounds(:,2))],...
-                    [0.5 0.5 0.5],...
-                    'facealpha',0.5)
-            else % use a simple chi-squared distribution to estimate 95% CI
-                mahal_thresh = chi2inv(0.95,num_mahal_dims);
-                plot([1 length(true_mahal_curve)],repmat(mahal_thresh,1,2),'--','linewidth',2,'color',[0.5 0.5 0.5])
-                text(length(true_mahal_curve)/2,mahal_thresh,'95% CI bound','FontSize',10,'color',[0.5 0.5 0.5])
-            end
+
+            % use a simple chi-squared distribution to estimate 95% CI
+            mahal_thresh = chi2inv(0.95,num_mahal_dims);
+            plot([1 length(true_mahal_curve)],repmat(mahal_thresh,1,2),'--','linewidth',2,'color',[0.5 0.5 0.5])
+            text(length(true_mahal_curve)/2,mahal_thresh,'95% CI bound','FontSize',10,'color',[0.5 0.5 0.5])
+
             hold on
             
             smoothed_dist = conv(true_mahal_curve,smoothing_kernel,'same');
@@ -328,15 +303,6 @@ function plot_mahal_curve(mahal_table)
     smoothed_dist = conv(true_mahal_curve,smoothing_kernel,'same');
     figure
     subplot(2,1,1)
-    if do_shuffle_control
-        shuffle_curve_bounds = prctile(shuffle_mahal_curve,[2.5 97.5],2);
-        patch(...
-            [1:length(shuffle_curve_bounds) length(shuffle_curve_bounds):-1:1],...
-            [shuffle_curve_bounds(:,1); flipud(shuffle_curve_bounds(:,2))],...
-            [0.5 0.5 0.5],...
-            'facealpha',0.5)
-        hold on
-    end
     plot(1:length(true_mahal_curve),smoothed_dist,'k','linewidth',2)
     set(gca,'box','off','tickdir','out')
     ylabel('Mahalanobis distance to final 40 trials in dPC space')
