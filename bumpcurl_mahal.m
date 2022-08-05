@@ -21,8 +21,12 @@ function bumpcurl_mahal
 %% Loop through trial data files
     num_dims = 16;
     num_mahal_dims = 4;
-    trim_start = -0.1;
-    trim_end = 0.5;
+%     alignment_event = 'idx_movement_on';
+%     trim_start = -0.1;
+%     trim_end = 0.5;
+    trim_start = 0;
+    trim_end = 0.3;
+    alignment_event = 'idx_bumpTime';
     num_control_shuffles = 1000;
     do_shuffle_control = false;
     arrays_to_plot = {'M1','S1'};
@@ -31,16 +35,18 @@ function bumpcurl_mahal
     
     mahal_curve_file=cell(length(filenames),1);
     
-    for filenum = 1:length(filenames)
+    for filenum = [3 6]%1:length(filenames)
         td = trial_data_cell{filenum};
         [~,td] = getTDidx(td,'epoch','AD');
         
         % trim from go cue to end time (skip bump)
         spikes_in_td = getTDfields(td,'spikes');
         td = smoothSignals(td,struct('signals',{spikes_in_td},'width',0.05));
-        td = trimTD(td,struct(...
-            'idx_start',{{'idx_movement_on',trim_start/td(1).bin_size}},...
-            'idx_end',{{'idx_movement_on',trim_end/td(1).bin_size}},...
+
+        valid_trials = ~isnan(cat(1,td.(alignment_event)));
+        td = trimTD(td(valid_trials),struct(...
+            'idx_start',{{alignment_event,trim_start/td(1).bin_size}},...
+            'idx_end',{{alignment_event,trim_end/td(1).bin_size}},...
             'remove_short',true));
 
         timevec = trim_start:td(1).bin_size:(length(td(1).vel)*td(1).bin_size+trim_start-0.001);
