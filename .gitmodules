@@ -13,3 +13,6 @@
 [submodule "lib/TME"]
 	path = lib/TME
 	url = https://github.com/gamaleldin/TME.git
+[submodule "lib/circ-toolbox"]
+	path = lib/circ-toolbox
+	url = https://github.com/raeedcho/circ-toolbox.git
