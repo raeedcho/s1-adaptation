@@ -122,4 +122,16 @@ function plot_pd_summary(pd_table,params)
     % pivot table to get learning blocks
     pd_table_nans.signalID = strsplit(strip(sprintf('ch%du%d ',pd_table_nans{:,'signalID'}')),' ')';
     pd_curves = unstack(pd_table_nans,'velPD','learning_block','groupingvariable',{'date','signalID'},'constantvariables',{'monkey','task','array'},'aggregationfunction',@circ_mean);
+
+    % remove rows with NaNs
+    nanrows = any(isnan(pd_curves{:,6:end}),2);
+    pd_curves(nanrows,:) = [];
+
+    % circ shift to zero out baseline PDs
+    pd_curve_arr = minusPi2Pi(pd_curves{:,6:end}-pd_curves{:,6});
+
+    % reverse PD shift direction for sessions with clockwise curl fields
+
+    % plot out 
+
 end
