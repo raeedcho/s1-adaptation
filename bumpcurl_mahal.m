@@ -29,8 +29,6 @@ function bumpcurl_mahal
 
     % plot out all mahal curves, colored by array
     plot_mahal_summary(mahal_curve_table,active_params)
-    
-    
 
 %% get passive mahal curves
     passive_params = struct(...
@@ -45,6 +43,24 @@ function bumpcurl_mahal
     
     mahal_curve_table = iterate_mahal_curves(trial_data_cell,passive_params);
     plot_mahal_summary(mahal_curve_table,passive_params)
+
+%% get mahal curves for simulated data
+    sim_file_info = dir(fullfile(dataroot,'spindle_sim','*CO*.mat'));
+    sim_filenames = horzcat({sim_file_info.name})';
+    td_sim_cell = load_curl_data(fullfile(dataroot,'spindle_sim',sim_filenames));
+
+    simulated_params = struct(...
+        'save_figures', true,...
+        'figsavedir', fullfile(homefolder,'Wiki','0-projects','s1-adaptation','figures','mahal','sim-active'),...
+        'num_dims', 16,...
+        'num_mahal_dims', 4,...
+        'alignment_event', 'idx_movement_on',...
+        'arrays_to_plot', {{'S1_musFor','S1_spindle'}},...
+        'smoothing_window_size', 10 ...
+    );
+
+    mahal_curve_table = iterate_mahal_curves(td_sim_cell,simulated_params);
+    plot_mahal_summary(mahal_curve_table,simulated_params)
     
 end
 
@@ -76,7 +92,6 @@ function mahal_curve_table = iterate_mahal_curves(trial_data_cell,params)
             continue
         end
         
-        % trim from go cue to end time (skip bump)
         spikes_in_td = getTDfields(td,'spikes');
         td = smoothSignals(td,struct('signals',{spikes_in_td},'width',0.05));
 
